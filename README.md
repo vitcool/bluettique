@@ -8,7 +8,6 @@ To be updated...
 - Environment Variables
 - Running the Project
 - Dependencies
-- License
 
 ## Installation
 
