@@ -315,12 +315,12 @@ class FingerBot:
         self.device.subscribe(self.NOTIF_UUID, callback=self.handle_notification)
         req = self.device_info_request()
         self.send_request(req)
-        print("Waiting for pairing to complete...")
+        print("FINGERBOT: Waiting for pairing to complete...")
 
         while not self.pairing_complete:
             await asyncio.sleep(0.1)
 
-        print("Pairing completed.")
+        print("FINGERBOT: Pairing completed.")
 
     def next_sn_ack(self):
         self.sn_ack += 1
@@ -339,7 +339,7 @@ class FingerBot:
             req = self.pair_request()
             self.send_request(req)
         elif ret.code == Coder.FUN_SENDER_PAIR:
-            print("Pairing successful")
+            print("FINGERBOT: Pairing successful")
             self.pairing_complete = True
 
     def send_request(self, xrequest):
@@ -508,15 +508,15 @@ class FingerBotController:
         )
 
     async def press_button(self):
-        print("Pairing...")
+        print("FINGERBOT: Pairing...")
 
         try:
             await self.fingerbot.connect()
         except Exception:
-            print("Connection failed, retrying...")
+            print("FINGERBOT: Connection failed, retrying...")
             await self.fingerbot.connect()
         
-        print("Connected")
+        print("FINGERBOT: Connected")
         self.fingerbot.press_button()
         self.fingerbot.disconnect()
-        print("Disconnected")
+        print("FINGERBOT: Disconnected")
