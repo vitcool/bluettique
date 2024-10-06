@@ -486,10 +486,10 @@ class FingerBot:
         return self.send_dps(dps_data)
 
     def press_button(self):
-        req = self.release_button()
+        req = self.push_button()
         self.send_request(req)
         time.sleep(1)
-        req = self.push_button()
+        req = self.release_button()
         self.send_request(req)
 
     def disconnect(self):
