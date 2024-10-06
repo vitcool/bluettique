@@ -1,10 +1,11 @@
-# taken from https://github.com/redphx/poc-tuya-ble-fingerbot
+# initial code is taken from https://github.com/redphx/poc-tuya-ble-fingerbot
 
 import time
 import pygatt
 import hashlib
 import secrets
 import asyncio
+import os
 from Crypto.Cipher import AES
 from struct import pack, unpack
 from enum import Enum
@@ -74,17 +75,6 @@ class DeviceInfoResp:
             auth_key,
         ) = unpack(">BBBBBB6sBB32s", raw[:46])
         auth_key = hexlify(auth_key)
-        #print(
-        #    "DeviceInfoResp:",
-        #    device_version_major,
-        #    device_version_minor,
-        #    protocol_version_major,
-        #    protocol_version_minor,
-        #    srand,
-        #    hardware_version_major,
-        #    hardware_version_minor,
-        #    auth_key,
-        #)
 
         self.device_version = "{}.{}".format(device_version_major, device_version_minor)
         self.protocol_version = "{}.{}".format(
@@ -315,10 +305,9 @@ class FingerBot:
         self.adapter = pygatt.GATTToolBackend(hci_device="hci0")
         self.reset_sn_ack()
 
-        self.pairing_future = None
+        self.pairing_complete = False
 
     async def connect(self):
-        self.pairing_future = asyncio.get_event_loop().create_future()
         self.adapter.start()
         self.device = self.adapter.connect(
             self.mac, address_type=pygatt.BLEAddressType.public, timeout=10
@@ -326,28 +315,12 @@ class FingerBot:
         self.device.subscribe(self.NOTIF_UUID, callback=self.handle_notification)
         req = self.device_info_request()
         self.send_request(req)
-        time.sleep(10)
-        self.pairing_future.set_result(True)
-        await self.pairing_future
+        print("Waiting for pairing to complete...")
 
-    def send_simple_request(self):
-        # Sending a simple request
-        iv = TuyaDataPacket.get_random_iv()
-        security_flag = 4
-        secret_key = self.secret_key_manager.get(security_flag)
+        while not self.pairing_complete:
+            await asyncio.sleep(0.1)
 
-        inp = bytearray(b"\x00")
-        sn_ack = self.next_sn_ack()
-        req = XRequest(
-            sn_ack=sn_ack,
-            ack_sn=0,
-            code=Coder.FUN_SENDER_DEVICE_INFO,
-            security_flag=security_flag,
-            secret_key=secret_key,
-            iv=iv,
-            inp=inp,
-        )
-        self.send_request(req)
+        print("Pairing completed.")
 
     def next_sn_ack(self):
         self.sn_ack += 1
@@ -363,26 +336,11 @@ class FingerBot:
 
         if ret.code == Coder.FUN_SENDER_DEVICE_INFO:
             self.secret_key_manager.setSrand(ret.resp.srand)
-
-            print("Pairing...")
             req = self.pair_request()
             self.send_request(req)
         elif ret.code == Coder.FUN_SENDER_PAIR:
             print("Pairing successful")
-            # Resolve the pairing future
-            if self.pairing_future and not self.pairing_future.done():
-                print("Pairing successful", self.pairing_future)
-                self.press_button()
-                self.pairing_future.set_result(True)
-
-
-            # while True:
-            #    req = self.release_button()
-            #    self.send_request(req)
-            #    time.sleep(1)
-            #    req = self.push_button()
-            #    self.send_request(req)
-            #    time.sleep(1)
+            self.pairing_complete = True
 
     def send_request(self, xrequest):
         packets = xrequest.pack()
@@ -478,23 +436,23 @@ class FingerBot:
                 8,
                 DpType.ENUM,
                 1,
-            ],  # Try a different mode (e.g., 1 instead of 0)   1 -down, 0 - up
+            ],
             [
                 DpAction.ARM_DOWN_PERCENT,
                 DpType.INT,
                 100,
-            ],  # Arm down to 80% 0 - up, 100 - down
+            ],
             [
                 DpAction.ARM_UP_PERCENT,
                 DpType.INT,
                 0,
-            ],  # Arm up set to 0 (stays down) 100 - up, 0 - down
+            ],
             [
                 DpAction.CLICK_SUSTAIN_TIME,
                 DpType.INT,
                 1000,
-            ],  # Sustain time set to 1 second
-            [DpAction.CLICK, DpType.BOOLEAN, True],  # Perform the click action
+            ],
+            [DpAction.CLICK, DpType.BOOLEAN, True],
         ]
         return self.send_dps(dps_data)
 
@@ -507,23 +465,23 @@ class FingerBot:
                 8,
                 DpType.ENUM,
                 0,
-            ],  # Try a different mode (e.g., 1 instead of 0)   1 -down, 0 - up
+            ],
             [
                 DpAction.ARM_DOWN_PERCENT,
                 DpType.INT,
                 0,
-            ],  # Arm down to 80% 0 - up, 100 - down
+            ],
             [
                 DpAction.ARM_UP_PERCENT,
                 DpType.INT,
                 100,
-            ],  # Arm up set to 0 (stays down) 100 - up, 0 - down
+            ],
             [
                 DpAction.CLICK_SUSTAIN_TIME,
                 DpType.INT,
                 1000,
-            ],  # Sustain time set to 1 second
-            [DpAction.CLICK, DpType.BOOLEAN, True],  # Perform the click action
+            ],
+            [DpAction.CLICK, DpType.BOOLEAN, True],
         ]
         return self.send_dps(dps_data)
 
@@ -536,3 +494,29 @@ class FingerBot:
 
     def disconnect(self):
         self.adapter.stop()
+
+
+class FingerBotController:
+    def __init__(self):
+        fingerbot_local_key = os.getenv("FINGERBOT_LOCAL_KEY")
+        fingerbot_mac = os.getenv("FINGERBOT_MAC")
+        fingerbot_uuid = os.getenv("FINGERBOT_UUID")
+        fingerbot_dev_id = os.getenv("FINGERBOT_DEV_ID")
+
+        self.fingerbot = FingerBot(
+            fingerbot_mac, fingerbot_local_key, fingerbot_uuid, fingerbot_dev_id
+        )
+
+    async def press_button(self):
+        print("Pairing...")
+
+        try:
+            await self.fingerbot.connect()
+        except Exception:
+            print("Connection failed, retrying...")
+            await self.fingerbot.connect()
+        
+        print("Connected")
+        self.fingerbot.press_button()
+        self.fingerbot.disconnect()
+        print("Disconnected")
