@@ -8,23 +8,24 @@ from bluettiController import BluettiController
 async def main():
     load_dotenv()
 
-    fingerbotController = FingerBotController()
-    await fingerbotController.press_button()
+#    fingerbotController = FingerBotController()
+#    await fingerbotController.press_button()
 
     tapoController = TapoController()
-    await tapoController.initialize()
-    await tapoController.turn_on()
-    await asyncio.sleep(2)  # Simulate some delay
-    await tapoController.turn_off()
+    online = await tapoController.initialize()
+    print('online' if online else 'offline')
+    #await tapoController.turn_on()
+    #await asyncio.sleep(2)  # Simulate some delay
+    #await tapoController.turn_off()
 
-    bluetiiController = BluettiController()
-    await bluetiiController.initialize()
-    await asyncio.sleep(2)
-    bluetiiController.turn_dc()
+#    bluetiiController = BluettiController()
+#    await bluetiiController.initialize()
+#    await asyncio.sleep(2)
+#    bluetiiController.turn_dc()
 
-    # Keep the service running
-    while True:
-        pass
+#    # Keep the service running
+#    while True:
+#        pass
 
 
 

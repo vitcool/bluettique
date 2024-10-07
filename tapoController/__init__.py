@@ -1,4 +1,5 @@
 import os
+import asyncio
 from tapo import ApiClient
 
 class Tapo():
@@ -9,11 +10,20 @@ class Tapo():
         self.device = None
 
     async def initialize(self):
-        await self._login()
+        try:
+            await asyncio.wait_for(self._login(), timeout=10)
+            print("Pairing successful")
+        except Exception:
+            print("Pairing failed")
+            raise
+        
 
     async def _login(self):
-        client = ApiClient(self.tapo_username, self.tapo_password)
-        self.device = await client.p110(self.ip_address)
+        try:
+            client = ApiClient(self.tapo_username, self.tapo_password)
+            self.device = await client.p110(self.ip_address)
+        except Exception:
+            raise
 
     async def turn_on(self):
         print("TAPO:Turning device on...")
@@ -30,9 +40,17 @@ class Tapo():
 class TapoController():
     def __init__(self):
         self.tapo = Tapo()
+        self.online = False
 
     async def initialize(self):
-        await self.tapo.initialize()
+        try:
+            await self.tapo.initialize()
+            print("TAPO online")
+            return True
+        except Exception:
+            print("TAPO offline")
+            return False
+            
 
     async def turn_on(self):
 #        await self.tapo._login()
