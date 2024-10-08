@@ -2,7 +2,8 @@ import os
 import asyncio
 from tapo import ApiClient
 
-class Tapo():
+
+class Tapo:
     def __init__(self):
         self.tapo_username = os.getenv("TAPO_USERNAME")
         self.tapo_password = os.getenv("TAPO_PASSWORD")
@@ -16,7 +17,6 @@ class Tapo():
         except Exception:
             print("Pairing failed")
             raise
-        
 
     async def _login(self):
         try:
@@ -34,31 +34,36 @@ class Tapo():
         await self.device.off()
 
     async def get_state(self):
-        device_info = await self.device.get_device_info()
-        print(f"TAPO: Device info: {device_info.to_dict()}")
+        return await self.device.get_device_info()
 
-class TapoController():
+
+class TapoController:
     def __init__(self):
         self.tapo = Tapo()
         self.online = False
 
     async def initialize(self):
+        await self.tapo.initialize()
+
+
+    async def get_status(self):
+        result = {
+            "is_online": False,
+            "is_charging": False
+        }
         try:
             await self.tapo.initialize()
-            print("TAPO online")
-            return True
+            result["is_online"] = True
+            device_info = await self.tapo.get_state()
+            result["is_charging"] = device_info.device_on
+            return result
         except Exception:
-            print("TAPO offline")
-            return False
-            
+            return result
 
     async def turn_on(self):
-#        await self.tapo._login()
         await self.tapo.turn_on()
         await self.tapo.get_state()
 
     async def turn_off(self):
-#        await self.tapo._login()
         await self.tapo.turn_off()
         await self.tapo.get_state()
-    
