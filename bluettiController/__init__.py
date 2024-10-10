@@ -74,15 +74,24 @@ class BluettiMQTTService:
 
         print(f"Received message: {topic} - {payload}")
         self.device_connected = True
-
-        # Print or process the data fields you're interested in
+        # Update properties based on received messages
         if "total_battery_percent" in topic:
-            print(f"Battery Percent: {payload}")
+            self.total_battery_percent = int(payload)
+            print(f"Battery Percent: {self.total_battery_percent}")
         elif "ac_output_on" in topic:
-            print(f"AC Output: {payload}")
+            self.ac_output_on = payload == "ON"
+            print(f"AC Output: {self.ac_output_on}")
         elif "dc_output_on" in topic:
-            print(f"DC Output: {payload}")
-
+            self.dc_output_on = payload == "ON"
+            print(f"DC Output: {self.dc_output_on}")
+            
+    def get_status(self):
+        return {
+            "total_battery_percent": getattr(self, "total_battery_percent", None),
+            "ac_output_on": getattr(self, "ac_output_on", None),
+            "dc_output_on": getattr(self, "dc_output_on", None),
+        }
+            
     def start(self):
         self.client.loop_start()
 
@@ -121,3 +130,6 @@ class BluettiController:
         time.sleep(2)
         self.bluetti.set_dc_output("OFF")
         print("Bluetti:Turning DC device off...")
+        
+    async def get_status(self):
+        return self.bluetti.get_status()

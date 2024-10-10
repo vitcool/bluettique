@@ -43,8 +43,11 @@ class TapoController:
         self.online = False
 
     async def initialize(self):
-        await self.tapo.initialize()
-
+        try:   
+            await self.tapo.initialize()
+            return True
+        except Exception:
+            return False
 
     async def get_status(self):
         result = {
