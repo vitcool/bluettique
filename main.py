@@ -8,14 +8,14 @@ from bluettiController import BluettiController
 async def main():
     load_dotenv()
 
-    fingerbotController = FingerBotController()
-    await fingerbotController.press_button()
+    #fingerbotController = FingerBotController()
+    #await fingerbotController.press_button()
 
-    tapoController = TapoController()
-    await tapoController.initialize()
-    await tapoController.turn_on()
-    await asyncio.sleep(2)  # Simulate some delay
-    await tapoController.turn_off()
+    #tapoController = TapoController()
+    #await tapoController.initialize()
+    #await tapoController.turn_on()
+    #await asyncio.sleep(2)  # Simulate some delay
+    #await tapoController.turn_off()
 
     bluetiiController = BluettiController()
     await bluetiiController.initialize()

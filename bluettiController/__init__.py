@@ -47,18 +47,15 @@ class BluettiMQTTService:
         self.client.on_message = self.on_message
         self.client.connect(self.broker_host)
         self.start()
-        time.sleep(1)
-        self.set_dc_output("ON")
-        time.sleep(1)
-        self.set_dc_output("OFF")
         try:
-            await asyncio.wait_for(self._wait_for_pairing(), timeout=20)
+            await asyncio.wait_for(self._wait_for_pairing(), timeout=5)
             print("Pairing successful")
         except asyncio.TimeoutError:
             print("Timeout waiting for pairing")
 
     async def _wait_for_pairing(self):
         while not self.device_connected:
+            print(f"self.device_connected: {self.device_connected}")
             await asyncio.sleep(0.1)
 
     def on_connect(self, client, userdata, flags, rc):
@@ -72,19 +69,25 @@ class BluettiMQTTService:
         topic = message.topic
         payload = message.payload.decode()
 
-        print(f"Received message: {topic} - {payload}")
         self.device_connected = True
 
         # Print or process the data fields you're interested in
-        if "total_battery_percent" in topic:
-            print(f"Battery Percent: {payload}")
-        elif "ac_output_on" in topic:
-            print(f"AC Output: {payload}")
-        elif "dc_output_on" in topic:
-            print(f"DC Output: {payload}")
+        #if "total_battery_percent" in topic:
+        #    print(f"Battery Percent: {payload}")
+        #elif "ac_output_on" in topic:
+        #    print(f"AC Output: {payload}")
+        #elif "dc_output_on" in topic:
+        #    print(f"DC Output: {payload}")
 
     def start(self):
         self.client.loop_start()
+        command = ["sudo", "bluetti-mqtt", "--broker", self.broker_host, self.mac_address]
+        try:
+            #with open(os.devnull, 'w') as devnull:
+            subprocess.run(command, check=True)#, stdout=devnull, stderr=devnull)
+            print("bluetti-mqtt command executed successfully.")
+        except subprocess.CalledProcessError as e:
+            print(f"Failed to execute bluetti-mqtt command: {e}")
 
     def stop(self):
         self.client.loop_stop()
