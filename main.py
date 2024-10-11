@@ -12,8 +12,8 @@ async def main():
     t110_online = False
     t110_charging = False
 
-    # fingerbotController = FingerBotController()
-    # await fingerbotController.press_button()
+    #fingerbotController = FingerBotController()
+    #await fingerbotController.press_button()
 
     tapoController = TapoController()
     bluetiiController = BluettiController()
@@ -28,10 +28,14 @@ async def main():
     # Register the signal handler for KeyboardInterrupt
     signal.signal(signal.SIGINT, handle_interrupt)
 
-    await bluetiiController.initialize()
+    bluetti_initial_success = await bluetiiController.initialize()
 
     if not tapo_initial_sucess:
         print("Failed to initialize Tapo controller")
+        return
+
+    if not bluetti_initial_success:
+        print("Failed to initialize Bluetooth controller")
         return
     
     while True:
@@ -40,8 +44,8 @@ async def main():
             t110_online = tapoStatus["is_online"]
             t110_charging = tapoStatus["is_charging"]
             
-        print(f"Is online: {t110_online}")
-        print(f"Is charging: {t110_charging}")
+        print(f"TAPO: Is online: {t110_online}")
+        print(f"TAPO: Is charging: {t110_charging}")
         
         bluettiStatus = await bluetiiController.get_status()
         if bluettiStatus:
@@ -49,9 +53,9 @@ async def main():
             bluetti_ac_output_on = bluettiStatus["ac_output_on"]
             bluetti_dc_output_on = bluettiStatus["dc_output_on"]
             
-        print(f"Total battery percent: {bluetti_total_battery_percent}")
-        print(f"AC output on: {bluetti_ac_output_on}")
-        print(f"DC output on: {bluetti_dc_output_on}")
+        print(f"BLUETTI: Total battery percent: {bluetti_total_battery_percent}")
+        print(f"BLUETTI: AC output on: {bluetti_ac_output_on}")
+        print(f"BLUETTI: DC output on: {bluetti_dc_output_on}")
 
         await asyncio.sleep(5)  
 

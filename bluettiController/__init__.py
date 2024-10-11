@@ -52,11 +52,11 @@ class BluettiMQTTService:
         self.start_client()
         try:
             await asyncio.wait_for(self._wait_for_pairing(), timeout=int(self.broker_connection_timeout))
-            print("Pairing successful")
+            return True
         except asyncio.TimeoutError:
             self.stop_broker()
             self.stop_client()
-            print("Timeout waiting for pairing")
+            return False
 
     async def _wait_for_pairing(self):
         while not self.device_connected:
@@ -155,7 +155,7 @@ class BluettiController:
         print("BluettiController initialized.")
         await self.bluetti.connect()
 
-    def turn_dc(self):
+    def turn_dc(self):   
         print("Bluetti:Turning DC device on...")
         self.bluetti.set_dc_output("ON")
         time.sleep(2)

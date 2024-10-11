@@ -308,19 +308,23 @@ class FingerBot:
         self.pairing_complete = False
 
     async def connect(self):
-        self.adapter.start()
-        self.device = self.adapter.connect(
-            self.mac, address_type=pygatt.BLEAddressType.public, timeout=10
-        )
-        self.device.subscribe(self.NOTIF_UUID, callback=self.handle_notification)
-        req = self.device_info_request()
-        self.send_request(req)
-        print("FINGERBOT: Waiting for pairing to complete...")
+        try:
+            self.adapter.start()
+            self.device = self.adapter.connect(
+                self.mac, address_type=pygatt.BLEAddressType.public, timeout=10
+            )
+            self.device.subscribe(self.NOTIF_UUID, callback=self.handle_notification)
+            req = self.device_info_request()
+            self.send_request(req)
 
-        while not self.pairing_complete:
-            await asyncio.sleep(0.1)
-
-        print("FINGERBOT: Pairing completed.")
+            while not self.pairing_complete:
+                await asyncio.sleep(0.1)
+            print("CONNECTED")
+            return True
+        except Exception as e:
+            raise
+            connected = await self.fingerbot.connect()
+            return False
 
     def next_sn_ack(self):
         self.sn_ack += 1
@@ -339,13 +343,11 @@ class FingerBot:
             req = self.pair_request()
             self.send_request(req)
         elif ret.code == Coder.FUN_SENDER_PAIR:
-            print("FINGERBOT: Pairing successful")
             self.pairing_complete = True
 
     def send_request(self, xrequest):
         packets = xrequest.pack()
         for cmd in packets:
-            # print('  >>', hexlify(cmd))
             self.device.char_write(self.CHAR_UUID, value=cmd, wait_for_response=False)
 
     def device_info_request(self):
@@ -415,7 +417,6 @@ class FingerBot:
                 length = 1
                 raw += pack(">BB", length, dp_value)
 
-        print("Fingering...", hexlify(raw))
         sn_ack = self.next_sn_ack()
         return XRequest(
             sn_ack=sn_ack,
@@ -508,15 +509,15 @@ class FingerBotController:
         )
 
     async def press_button(self):
-        print("FINGERBOT: Pairing...")
-
-        try:
-            await self.fingerbot.connect()
-        except Exception:
-            print("FINGERBOT: Connection failed, retrying...")
-            await self.fingerbot.connect()
+        connected = False
+        while not connected:
+            try:
+                connected = await self.fingerbot.connect()
+            except Exception:
+                print("FINGERBOT: Connection failed, retrying...")
         
         print("FINGERBOT: Connected")
         self.fingerbot.press_button()
+        print("FINGERBOT: Button pressed")
         self.fingerbot.disconnect()
         print("FINGERBOT: Disconnected")

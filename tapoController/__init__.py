@@ -12,10 +12,10 @@ class Tapo:
 
     async def initialize(self):
         try:
-            await asyncio.wait_for(self._login(), timeout=10)
-            print("Pairing successful")
+            await asyncio.wait_for(self._login(), timeout=20)
+            print("TAPO: Pairing successful")
         except Exception:
-            print("Pairing failed")
+            print("TAPO: Pairing failed")
             raise
 
     async def _login(self):
@@ -26,7 +26,7 @@ class Tapo:
             raise
 
     async def turn_on(self):
-        print("TAPO:Turning device on...")
+        print("TAPO: Turning device on...")
         await self.device.on()
 
     async def turn_off(self):
