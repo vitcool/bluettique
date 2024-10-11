@@ -43,6 +43,7 @@ class BluettiMQTTService:
         self.device_connected = False
 
     async def connect(self):
+        self.start_broker()
         self.client.on_connect = self.on_connect
         self.client.on_message = self.on_message
         self.client.connect(self.broker_host)
@@ -72,22 +73,35 @@ class BluettiMQTTService:
         self.device_connected = True
 
         # Print or process the data fields you're interested in
-        #if "total_battery_percent" in topic:
-        #    print(f"Battery Percent: {payload}")
-        #elif "ac_output_on" in topic:
-        #    print(f"AC Output: {payload}")
-        #elif "dc_output_on" in topic:
-        #    print(f"DC Output: {payload}")
+        if "total_battery_percent" in topic:
+            print(f"Battery Percent: {payload}")
+        elif "ac_output_on" in topic:
+            print(f"AC Output: {payload}")
+        elif "dc_output_on" in topic:
+            print(f"DC Output: {payload}")
 
     def start(self):
         self.client.loop_start()
-        command = ["sudo", "bluetti-mqtt", "--broker", self.broker_host, self.mac_address]
+
+    def start_broker(self):
+        """Start the bluetti-mqtt broker as a subprocess."""
+        command = [
+            "sudo",
+            "bluetti-mqtt",
+            "--broker",
+            self.broker_host,
+            self.mac_address,
+        ]
         try:
-            #with open(os.devnull, 'w') as devnull:
-            subprocess.run(command, check=True)#, stdout=devnull, stderr=devnull)
-            print("bluetti-mqtt command executed successfully.")
-        except subprocess.CalledProcessError as e:
-            print(f"Failed to execute bluetti-mqtt command: {e}")
+            # Start the broker in the background
+            self.broker_process = subprocess.Popen(
+                command, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            )
+            print(
+                f"bluetti-mqtt broker started successfully with MAC address: {self.mac_address}"
+            )
+        except Exception as e:
+            print(f"Failed to start bluetti-mqtt broker: {e}")
 
     def stop(self):
         self.client.loop_stop()
