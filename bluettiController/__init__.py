@@ -33,6 +33,8 @@ class BluettiMQTTService:
         self.broker_host = os.getenv("BLUETTI_BROKER_HOST")
         self.mac_address = os.getenv("BLUETTI_MAC_ADDRESS")
         self.device_name = os.getenv("BLUETTI_DEVICE_NAME")
+        self.broker_interval = os.getenv("BLUETTI_BROKER_INTERVAL")
+        self.broker_connection_timeout = os.getenv("BLUETTI_BROKER_CONNECTION_TIMEOUT")
         self.client = mqtt.Client()
 
         # Subscribe to necessary topics
@@ -43,18 +45,17 @@ class BluettiMQTTService:
         self.device_connected = False
 
     async def connect(self):
+        self.start_broker()
         self.client.on_connect = self.on_connect
         self.client.on_message = self.on_message
         self.client.connect(self.broker_host)
-        self.start()
-        time.sleep(1)
-        self.set_dc_output("ON")
-        time.sleep(1)
-        self.set_dc_output("OFF")
+        self.start_client()
         try:
-            await asyncio.wait_for(self._wait_for_pairing(), timeout=20)
+            await asyncio.wait_for(self._wait_for_pairing(), timeout=int(self.broker_connection_timeout))
             print("Pairing successful")
         except asyncio.TimeoutError:
+            self.stop_broker()
+            self.stop_client()
             print("Timeout waiting for pairing")
 
     async def _wait_for_pairing(self):
@@ -72,7 +73,6 @@ class BluettiMQTTService:
         topic = message.topic
         payload = message.payload.decode()
 
-        print(f"Received message: {topic} - {payload}")
         self.device_connected = True
         # Update properties based on received messages
         if "total_battery_percent" in topic:
@@ -91,11 +91,42 @@ class BluettiMQTTService:
             "ac_output_on": getattr(self, "ac_output_on", None),
             "dc_output_on": getattr(self, "dc_output_on", None),
         }
-            
-    def start(self):
+
+    def start_client(self):
         self.client.loop_start()
 
-    def stop(self):
+    def start_broker(self):
+        """Start the bluetti-mqtt broker as a subprocess."""
+        command = [
+            "sudo",
+            "bluetti-mqtt",
+            "--broker",
+            self.broker_host,
+            "--interval",
+            self.broker_interval,
+            self.mac_address,
+        ]
+        try:
+            # Start the broker in the background
+            self.broker_process = subprocess.Popen(
+                command, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            )
+            print(
+                f"bluetti-mqtt broker started successfully with MAC address: {self.mac_address}"
+            )
+        except Exception as e:
+            print(f"Failed to start bluetti-mqtt broker: {e}")
+
+    def stop_broker(self):
+        """Stop the bluetti-mqtt broker subprocess."""
+        if hasattr(self, 'broker_process') and self.broker_process:
+            self.broker_process.terminate()
+            self.broker_process.wait()
+            print("bluetti-mqtt broker stopped successfully.")
+        else:
+            print("No broker process found to stop.")
+
+    def stop_client(self):
         self.client.loop_stop()
         self.client.disconnect()
 
@@ -133,3 +164,7 @@ class BluettiController:
         
     async def get_status(self):
         return self.bluetti.get_status()
+
+    def stop(self): 
+        self.bluetti.stop_client()
+        self.bluetti.stop_broker()

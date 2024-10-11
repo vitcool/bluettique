@@ -1,4 +1,5 @@
 import asyncio
+import signal
 from dotenv import load_dotenv
 from fingerbotController import FingerBotController
 from tapoController import TapoController
@@ -18,6 +19,15 @@ async def main():
     bluetiiController = BluettiController()
     
     tapo_initial_sucess = await tapoController.initialize()   
+
+    def handle_interrupt(signal, frame):
+        print("KeyboardInterrupt received, stopping services...")
+        bluetiiController.stop()
+        exit(0)
+
+    # Register the signal handler for KeyboardInterrupt
+    signal.signal(signal.SIGINT, handle_interrupt)
+
     await bluetiiController.initialize()
 
     if not tapo_initial_sucess:
@@ -43,7 +53,7 @@ async def main():
         print(f"AC output on: {bluetti_ac_output_on}")
         print(f"DC output on: {bluetti_dc_output_on}")
 
-        await asyncio.sleep(60)  # Wait for 1 minute before checking again
+        await asyncio.sleep(5)  
 
     #await tapoController.turn_on()
     #await asyncio.sleep(2)  # Simulate some delay
