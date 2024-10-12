@@ -52,11 +52,11 @@ class BluettiMQTTService:
         self.start_client()
         try:
             await asyncio.wait_for(self._wait_for_pairing(), timeout=int(self.broker_connection_timeout))
-            print("Pairing successful")
+            return True
         except asyncio.TimeoutError:
             self.stop_broker()
             self.stop_client()
-            print("Timeout waiting for pairing")
+            return False
 
     async def _wait_for_pairing(self):
         while not self.device_connected:
@@ -73,15 +73,29 @@ class BluettiMQTTService:
         topic = message.topic
         payload = message.payload.decode()
 
-        self.device_connected = True
+        if not self.device_connected:
+            self.device_connected = True
+            
+        # Update properties based on received messages
+        topic_map = {
+            "total_battery_percent": ("total_battery_percent", int),
+            "ac_output_on": ("ac_output_on", lambda x: x == "ON"),
+            "dc_output_on": ("dc_output_on", lambda x: x == "ON"),
+            "ac_output_power": ("ac_output_power", int),
+        }
 
-        # Print or process the data fields you're interested in
-        if "total_battery_percent" in topic:
-            print(f"Battery Percent: {payload}")
-        elif "ac_output_on" in topic:
-            print(f"AC Output: {payload}")
-        elif "dc_output_on" in topic:
-            print(f"DC Output: {payload}")
+        for key, (attr, transform) in topic_map.items():
+            if key in topic:
+                setattr(self, attr, transform(payload))
+                break
+            
+    def get_status(self):
+        return {
+            "total_battery_percent": getattr(self, "total_battery_percent", None),
+            "ac_output_on": getattr(self, "ac_output_on", None),
+            "dc_output_on": getattr(self, "dc_output_on", None),
+            "ac_output_power": getattr(self, "ac_output_power", None)
+        }
 
     def start_client(self):
         self.client.loop_start()
@@ -144,14 +158,24 @@ class BluettiController:
     async def initialize(self):
         self.mosquitto.check()
         print("BluettiController initialized.")
-        await self.bluetti.connect()
+        for attempt in range(2):
+            if await self.bluetti.connect():
+                print("BluettiMQTTService connected.")
+                return True
+            print(f"Retrying connection to BluettiMQTTService... (Attempt {attempt + 1})")
+            await asyncio.sleep(5)
+        print("Failed to connect to BluettiMQTTService after 2 attempts.")
+        return False
 
-    def turn_dc(self):
+    def turn_dc(self):   
         print("Bluetti:Turning DC device on...")
         self.bluetti.set_dc_output("ON")
         time.sleep(2)
         self.bluetti.set_dc_output("OFF")
         print("Bluetti:Turning DC device off...")
+        
+    async def get_status(self):
+        return self.bluetti.get_status()
 
     def stop(self): 
         self.bluetti.stop_client()

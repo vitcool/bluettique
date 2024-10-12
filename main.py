@@ -8,17 +8,16 @@ from bluettiController import BluettiController
 
 async def main():
     load_dotenv()
-
-    fingerbotController = FingerBotController()
-    await fingerbotController.press_button()
+    # statuses
+    t110_online = False
+    t110_charging = False
+    tapo_initial_sucess = False
 
     tapoController = TapoController()
-    await tapoController.initialize()
-    await tapoController.turn_on()
-    await asyncio.sleep(2)  # Simulate some delay
-    await tapoController.turn_off()
-
     bluetiiController = BluettiController()
+    fingerbotController = FingerBotController()
+            
+    tapo_initial_sucess = await tapoController.initialize()   
 
     def handle_interrupt(signal, frame):
         print("KeyboardInterrupt received, stopping services...")
@@ -28,14 +27,36 @@ async def main():
     # Register the signal handler for KeyboardInterrupt
     signal.signal(signal.SIGINT, handle_interrupt)
 
-    await bluetiiController.initialize()
-    await asyncio.sleep(2)
-    bluetiiController.turn_dc()
+    if not tapo_initial_sucess:
+        print("Failed to initialize Tapo controller")
+        return
 
-    # Keep the service running
+    while not await bluetiiController.initialize():
+        print("Failed to initialize Bluetooth controller")
+        await fingerbotController.press_button()
+    
     while True:
-        pass
+        tapo_status = await tapoController.get_status()
+        if tapo_status:
+            t110_online = tapo_status["is_online"]
+            t110_charging = tapo_status["is_charging"]
+            
+        print(f"TAPO: Is online: {t110_online}")
+        print(f"TAPO: Is charging: {t110_charging}")
+        
+        bluetti_status = await bluetiiController.get_status()
 
-
+        if bluetti_status:
+            bluetti_total_battery_percent = bluetti_status["total_battery_percent"]
+            bluetti_ac_output_on = bluetti_status["ac_output_on"]
+            bluetti_dc_output_on = bluetti_status["dc_output_on"]
+            bluetti_ac_output_power = bluetti_status["ac_output_power"]
+            
+        print(f"BLUETTI: Total battery percent: {bluetti_total_battery_percent}")
+        print(f"BLUETTI: AC output on: {bluetti_ac_output_on}")
+        print(f"BLUETTI: DC output on: {bluetti_dc_output_on}")
+        print(f"BLUETTI: AC output power: {bluetti_ac_output_power}")
+        
+        await asyncio.sleep(5)  
 
 asyncio.run(main())
