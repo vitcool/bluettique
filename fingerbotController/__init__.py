@@ -319,7 +319,7 @@ class FingerBot:
 
             while not self.pairing_complete:
                 await asyncio.sleep(0.1)
-            print("CONNECTED")
+            print("FINGERBOT: CONNECTED")
             return True
         except Exception as e:
             raise
