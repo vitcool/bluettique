@@ -41,6 +41,7 @@ class BluettiMQTTService:
         self.subscribe_topic = f"bluetti/state/{self.device_name}/#"
         self.dc_command_topic = f"bluetti/command/{self.device_name}/dc_output_on"
         self.ac_command_topic = f"bluetti/command/{self.device_name}/ac_output_on"
+        self.power_off_topic = f"bluetti/command/{self.device_name}/power_off"
 
         self.device_connected = False
 
@@ -73,6 +74,9 @@ class BluettiMQTTService:
         topic = message.topic
         payload = message.payload.decode()
 
+        # Print the whole topic message
+        print(f"Received message on topic {topic}: {payload}")
+
         if not self.device_connected:
             self.device_connected = True
             
@@ -82,6 +86,8 @@ class BluettiMQTTService:
             "ac_output_on": ("ac_output_on", lambda x: x == "ON"),
             "dc_output_on": ("dc_output_on", lambda x: x == "ON"),
             "ac_output_power": ("ac_output_power", int),
+            "ac_input_power": ("ac_input_power", int),
+            "dc_input_power": ("dc_input_power", int),
         }
 
         for key, (attr, transform) in topic_map.items():
@@ -94,8 +100,18 @@ class BluettiMQTTService:
             "total_battery_percent": getattr(self, "total_battery_percent", None),
             "ac_output_on": getattr(self, "ac_output_on", None),
             "dc_output_on": getattr(self, "dc_output_on", None),
-            "ac_output_power": getattr(self, "ac_output_power", None)
+            "ac_output_power": getattr(self, "ac_output_power", None),
+            "ac_input_power": getattr(self, "ac_input_power", None),
+            "dc_input_power": getattr(self, "dc_input_power", None),
         }
+
+    def reset_status(self):
+        self.total_battery_percent = None
+        self.ac_output_on = None
+        self.dc_output_on = None
+        self.ac_output_power = None
+        self.ac_input_power = None
+        self.dc_input_power = None
 
     def start_client(self):
         self.client.loop_start()
@@ -148,14 +164,19 @@ class BluettiMQTTService:
             self.client.publish(self.dc_command_topic, state)
         else:
             print("Invalid state for DC output")
+            
+    def power_off(self):
+        self.client.publish(self.power_off_topic, "ON")
 
 
 class BluettiController:
     def __init__(self):
         self.mosquitto = Mosquitto()
         self.bluetti = BluettiMQTTService()
+        self.turned_on = True
 
     async def initialize(self):
+        self.turned_on = True
         self.mosquitto.check()
         print("BluettiController initialized.")
         for attempt in range(2):
@@ -167,12 +188,20 @@ class BluettiController:
         print("Failed to connect to BluettiMQTTService after 2 attempts.")
         return False
 
-    def turn_dc(self):   
-        print("Bluetti:Turning DC device on...")
-        self.bluetti.set_dc_output("ON")
-        time.sleep(2)
-        self.bluetti.set_dc_output("OFF")
-        print("Bluetti:Turning DC device off...")
+    def turn_dc(self, state: str):   
+        print("Bluetti: Turning DC device", state)
+        self.bluetti.set_dc_output(state)
+        
+    def turn_ac(self, state: str):
+        print("Bluetti: Turning AC device", state)
+        self.bluetti.set_ac_output(state)
+        
+    def power_off(self):
+        print("Bluetti: Turning off device")
+        self.bluetti.power_off()
+        self.stop()
+        self.bluetti.reset_status()
+        self.turned_on = False
         
     async def get_status(self):
         return self.bluetti.get_status()
