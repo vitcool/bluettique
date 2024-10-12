@@ -22,7 +22,8 @@ class Tapo:
         try:
             client = ApiClient(self.tapo_username, self.tapo_password)
             self.device = await client.p110(self.ip_address)
-        except Exception:
+        except Exception as e:
+            print(f"TAPO: Login failed with error: {e}")
             raise
 
     async def turn_on(self):
