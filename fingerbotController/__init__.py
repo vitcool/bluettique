@@ -499,25 +499,27 @@ class FingerBot:
 
 class FingerBotController:
     def __init__(self):
-        fingerbot_local_key = os.getenv("FINGERBOT_LOCAL_KEY")
-        fingerbot_mac = os.getenv("FINGERBOT_MAC")
-        fingerbot_uuid = os.getenv("FINGERBOT_UUID")
-        fingerbot_dev_id = os.getenv("FINGERBOT_DEV_ID")
-
-        self.fingerbot = FingerBot(
-            fingerbot_mac, fingerbot_local_key, fingerbot_uuid, fingerbot_dev_id
-        )
+        self.fingerbot_local_key = os.getenv("FINGERBOT_LOCAL_KEY")
+        self.fingerbot_mac = os.getenv("FINGERBOT_MAC")
+        self.fingerbot_uuid = os.getenv("FINGERBOT_UUID")
+        self.fingerbot_dev_id = os.getenv("FINGERBOT_DEV_ID")
 
     async def press_button(self):
+        fingerbot = FingerBot(
+            self.fingerbot_mac, self.fingerbot_local_key, self.fingerbot_uuid, self.fingerbot_dev_id
+        )
         connected = False
+        try_count = 0
+        print('connected', connected)
         while not connected:
             try:
-                connected = await self.fingerbot.connect()
+                connected = await fingerbot.connect()
             except Exception:
-                print("FINGERBOT: Connection failed, retrying...")
+                try_count += 1
+                print(f"FINGERBOT: Connection failed, retrying... (Attempt {try_count})")
         
         print("FINGERBOT: Connected")
-        self.fingerbot.press_button()
+        fingerbot.press_button()
         print("FINGERBOT: Button pressed")
-        self.fingerbot.disconnect()
+        fingerbot.disconnect()
         print("FINGERBOT: Disconnected")
