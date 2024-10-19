@@ -13,14 +13,14 @@ async def main():
     t110_charging = False
 
     tapoController = TapoController()
-    bluetiiController = BluettiController()
+    bluettiController = BluettiController()
     fingerbotController = FingerBotController()
             
     tapo_initial_sucess = await tapoController.initialize()   
 
     def handle_interrupt(signal, frame):
         print("KeyboardInterrupt received, stopping services...")
-        bluetiiController.stop()
+        bluettiController.stop()
         exit(0)
 
     # Register the signal handler for KeyboardInterrupt
@@ -29,10 +29,10 @@ async def main():
     if not tapo_initial_sucess:
         print("Failed to initialize Tapo controller")
 
-    while not await bluetiiController.initialize():
+    while not await bluettiController.initialize():
         print("Failed to initialize Bluetooth controller")
         await fingerbotController.press_button()
-    
+
     while True:
         should_turn_off_bluetti = True
         
@@ -49,7 +49,7 @@ async def main():
         print(f"TAPO: Is online: {t110_online}")
         print(f"TAPO: Is charging: {t110_charging}")
         
-        bluetti_status = await bluetiiController.get_status()
+        bluetti_status = await bluettiController.get_status()
 
         if bluetti_status:
             bluetti_total_battery_percent = bluetti_status["total_battery_percent"]
@@ -82,34 +82,34 @@ async def main():
                 await tapoController.turn_off()
                 if bluetti_ac_output_power == 0:
                     print("Turning off AC output - no consumption")
-                    bluetiiController.power_off()
+                    bluettiController.power_off()
 
             # turn AC on if t110 is offline and turn AC off if no consumption 
             if not bluetti_ac_output_on and (not t110_online or not tapo_initial_sucess):
-                if not bluetiiController.turned_on:
+                if not bluettiController.turned_on:
                     print("Turning on Bluetti")
                     await fingerbotController.press_button()        
-                    await bluetiiController.initialize()
+                    await bluettiController.initialize()
                 
                 print("Turning on AC output")
-                bluetiiController.turn_ac("ON")
+                bluettiController.turn_ac("ON")
                 should_turn_off_bluetti = False
                 
                 await asyncio.sleep(70) # wait till consumption is stable and messages from Bluetti are received
 
-                bluetti_status = await bluetiiController.get_status()
+                bluetti_status = await bluettiController.get_status()
                 if bluetti_status:
                     bluetti_ac_output_power = bluetti_status["ac_output_power"]
 
                 if bluetti_ac_output_power == 0:
                     print("Turning Bluetti off - no consumption")
-                    bluetiiController.turn_ac("OFF")
-                    bluetiiController.power_off()
+                    bluettiController.turn_ac("OFF")
+                    bluettiController.power_off()
                     await fingerbotController.press_button()
             
-            if bluetiiController.turned_on and should_turn_off_bluetti and not bluetti_is_charging:
+            if bluettiController.turned_on and should_turn_off_bluetti and not bluetti_is_charging:
                 print("Turning off Bluetti")
-                bluetiiController.power_off()
+                bluettiController.power_off()
                 await fingerbotController.press_button()
         else:
             print("Waiting to get bluetti status")

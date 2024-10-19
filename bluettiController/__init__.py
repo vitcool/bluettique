@@ -166,7 +166,9 @@ class BluettiMQTTService:
             print("Invalid state for DC output")
             
     def power_off(self):
+        print("Bluetti: Powering off device")
         self.client.publish(self.power_off_topic, "ON")
+        print("Bluetti: Powered off")
 
 
 class BluettiController:
