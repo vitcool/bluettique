@@ -34,7 +34,14 @@ async def main():
         await fingerbotController.press_button()
 
     while True:
+        print("CYCLE START, bluettiController.turned_on", bluettiController.turned_on)
         should_turn_off_bluetti = True
+        should_turn_on_bluetti = False
+        
+        # in case if bluetti is turned on manually
+        if not bluettiController.turned_on:
+            print("Bluetti is turned off")
+            await bluettiController.initialize()
         
         if not tapo_initial_sucess:
             tapo_initial_sucess = await tapoController.initialize()
@@ -43,6 +50,10 @@ async def main():
         
         tapo_status = await tapoController.get_status()
         if tapo_status:
+            if t110_online == True and tapo_status["is_online"] == False:
+                print("TAPO: Device went offline")
+                should_turn_on_bluetti = True
+                
             t110_online = tapo_status["is_online"]
             t110_charging = tapo_status["is_charging"]
             
@@ -71,13 +82,17 @@ async def main():
             bluetti_is_charging = bluetti_ac_input_power > 0 or bluetti_dc_input_power > 0
 
             # turn on charger if bluetti is not charging and battery is not full
-            if t110_online and not bluetti_is_charging and bluetti_total_battery_percent < 100 and not t110_charging:
+            if t110_online and not bluetti_is_charging and not t110_charging:
                 print("Turning on charger")
                 should_turn_off_bluetti = False
-                await tapoController.turn_on()
+                if bluetti_total_battery_percent < 100:
+                    await tapoController.turn_on()
+                if bluettiController.ac_turned_on:
+                    print("Turning off AC output")
+                    bluettiController.turn_ac("OFF")
 
             # turn off charger if bluetti is charging and battery is full
-            if t110_online and bluetti_total_battery_percent == 100 and t110_charging:
+            if t110_online and t110_charging and bluetti_total_battery_percent == 100:
                 print("Turning off charger")
                 await tapoController.turn_off()
                 if bluetti_ac_output_power == 0:
@@ -85,7 +100,7 @@ async def main():
                     bluettiController.power_off()
 
             # turn AC on if t110 is offline and turn AC off if no consumption 
-            if not bluetti_ac_output_on and (not t110_online or not tapo_initial_sucess):
+            if (bluettiController.turned_on or should_turn_on_bluetti) and not bluetti_ac_output_on and (not t110_online or not tapo_initial_sucess):
                 if not bluettiController.turned_on:
                     print("Turning on Bluetti")
                     await fingerbotController.press_button()        
@@ -104,8 +119,7 @@ async def main():
                 if bluetti_ac_output_power == 0:
                     print("Turning Bluetti off - no consumption")
                     bluettiController.turn_ac("OFF")
-                    bluettiController.power_off()
-                    await fingerbotController.press_button()
+                    should_turn_off_bluetti = True
             
             if bluettiController.turned_on and should_turn_off_bluetti and not bluetti_is_charging:
                 print("Turning off Bluetti")
@@ -114,7 +128,7 @@ async def main():
         else:
             print("Waiting to get bluetti status")
             
-        
-        await asyncio.sleep(90)  
+        print("CYCLE END")
+        await asyncio.sleep(30)  
 
 asyncio.run(main())

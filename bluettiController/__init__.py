@@ -46,6 +46,8 @@ class BluettiMQTTService:
         self.device_connected = False
 
     async def connect(self):
+        if self.device_connected:
+            self.device_connected = False
         self.start_broker()
         self.client.on_connect = self.on_connect
         self.client.on_message = self.on_message
@@ -86,8 +88,8 @@ class BluettiMQTTService:
             "ac_output_on": ("ac_output_on", lambda x: x == "ON"),
             "dc_output_on": ("dc_output_on", lambda x: x == "ON"),
             "ac_output_power": ("ac_output_power", int),
-            "ac_input_power": ("ac_input_power", int),
-            "dc_input_power": ("dc_input_power", int),
+            "ac_input_power": ("ac_input_power", float),
+            "dc_input_power": ("dc_input_power", float),
         }
 
         for key, (attr, transform) in topic_map.items():
@@ -155,6 +157,7 @@ class BluettiMQTTService:
         """Turn AC output ON/OFF"""
         if state in ["ON", "OFF"]:
             self.client.publish(self.ac_command_topic, state)
+            self.ac_output_on = state == "ON"
         else:
             print("Invalid state for AC output")
 
@@ -166,9 +169,7 @@ class BluettiMQTTService:
             print("Invalid state for DC output")
             
     def power_off(self):
-        print("Bluetti: Powering off device")
         self.client.publish(self.power_off_topic, "ON")
-        print("Bluetti: Powered off")
 
 
 class BluettiController:
@@ -176,14 +177,15 @@ class BluettiController:
         self.mosquitto = Mosquitto()
         self.bluetti = BluettiMQTTService()
         self.turned_on = True
+        self.ac_turned_on = False
 
     async def initialize(self):
-        self.turned_on = True
         self.mosquitto.check()
         print("BluettiController initialized.")
         for attempt in range(2):
             if await self.bluetti.connect():
                 print("BluettiMQTTService connected.")
+                self.turned_on = True
                 return True
             print(f"Retrying connection to BluettiMQTTService... (Attempt {attempt + 1})")
             await asyncio.sleep(5)
@@ -196,13 +198,14 @@ class BluettiController:
         
     def turn_ac(self, state: str):
         print("Bluetti: Turning AC device", state)
+        self.ac_turned_on = state == "ON"
         self.bluetti.set_ac_output(state)
         
     def power_off(self):
         print("Bluetti: Turning off device")
         self.bluetti.power_off()
         self.stop()
-        self.bluetti.reset_status()
+        # self.bluetti.reset_status()
         self.turned_on = False
         
     async def get_status(self):
