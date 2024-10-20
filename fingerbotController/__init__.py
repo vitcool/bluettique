@@ -319,7 +319,6 @@ class FingerBot:
 
             while not self.pairing_complete:
                 await asyncio.sleep(0.1)
-            print("FINGERBOT: CONNECTED")
             return True
         except Exception as e:
             raise
@@ -510,6 +509,7 @@ class FingerBotController:
 
     async def press_button(self):
         connected = False
+        self.fingerbot.pairing_complete = False
         while not connected:
             try:
                 connected = await self.fingerbot.connect()
