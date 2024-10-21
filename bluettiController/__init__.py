@@ -88,6 +88,7 @@ class BluettiMQTTService:
             "ac_output_on": ("ac_output_on", lambda x: x == "ON"),
             "dc_output_on": ("dc_output_on", lambda x: x == "ON"),
             "ac_output_power": ("ac_output_power", int),
+            "dc_output_power": ("dc_output_power", int),
             "ac_input_power": ("ac_input_power", float),
             "dc_input_power": ("dc_input_power", float),
         }
@@ -103,6 +104,7 @@ class BluettiMQTTService:
             "ac_output_on": getattr(self, "ac_output_on", None),
             "dc_output_on": getattr(self, "dc_output_on", None),
             "ac_output_power": getattr(self, "ac_output_power", None),
+            "dc_output_power": getattr(self, "dc_output_power", None),
             "ac_input_power": getattr(self, "ac_input_power", None),
             "dc_input_power": getattr(self, "dc_input_power", None),
         }
@@ -112,6 +114,7 @@ class BluettiMQTTService:
         self.ac_output_on = None
         self.dc_output_on = None
         self.ac_output_power = None
+        self.dc_output_power = None
         self.ac_input_power = None
         self.dc_input_power = None
 
@@ -178,6 +181,7 @@ class BluettiController:
         self.bluetti = BluettiMQTTService()
         self.turned_on = True
         self.ac_turned_on = False
+        self.dc_turned_on = False
 
     async def initialize(self):
         self.mosquitto.check()
@@ -194,6 +198,7 @@ class BluettiController:
 
     def turn_dc(self, state: str):   
         print("Bluetti: Turning DC device", state)
+        self.dc_turned_on = state == "ON"
         self.bluetti.set_dc_output(state)
         
     def turn_ac(self, state: str):
@@ -203,7 +208,7 @@ class BluettiController:
         
     def power_off(self):
         print("Bluetti: Turning off device")
-        self.bluetti.power_off()
+        # self.bluetti.power_off() sometimes it works, sometimes it doesn't
         self.stop()
         # self.bluetti.reset_status()
         self.turned_on = False

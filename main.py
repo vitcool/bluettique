@@ -5,7 +5,6 @@ from fingerbotController import FingerBotController
 from tapoController import TapoController
 from bluettiController import BluettiController
 
-
 async def fetch_bluetti_status(bluettiController):
     bluetti_status = await bluettiController.get_status()
     if bluetti_status:
@@ -22,7 +21,6 @@ async def fetch_bluetti_status(bluettiController):
 
 
 async def main(tapoController, bluettiController, fingerbotController):
-    load_dotenv()
     t110_online = False
     t110_charging = False
     tapo_initial_sucess = await tapoController.initialize()
@@ -41,9 +39,11 @@ async def main(tapoController, bluettiController, fingerbotController):
         print("Failed to initialize Bluetooth controller")
         await fingerbotController.press_button()
 
-    while True:
-        print("CYCLE START, bluettiController.turned_on", bluettiController.turned_on)
-        should_turn_off_bluetti = True
+    cycle_counter = 0
+    
+    while True:            
+        cycle_counter += 1
+        print(f"CYCLE #{cycle_counter} START")
         should_turn_on_bluetti = False
 
         # in case if bluetti is turned on manually
@@ -68,29 +68,33 @@ async def main(tapoController, bluettiController, fingerbotController):
         print(f"TAPO: Is online: {t110_online}")
         print(f"TAPO: Is charging: {t110_charging}")
 
-        bluetti_status = await fetch_bluetti_status(bluettiController)
-
-        if bluetti_status.bluetti_total_battery_percent is not None:
+        if bluetti_status:
+            bluetti_total_battery_percent = bluetti_status["total_battery_percent"]
+            bluetti_ac_output_on = bluetti_status["ac_output_on"]
+            bluetti_dc_output_on = bluetti_status["dc_output_on"]
+            bluetti_ac_output_power = bluetti_status["ac_output_power"]
+            bluetti_dc_output_power = bluetti_status["dc_output_power"]
+            bluetti_ac_input_power = bluetti_status["ac_input_power"]
+            bluetti_dc_input_power = bluetti_status.get("dc_input_power", 0)
+        
+        if bluetti_total_battery_percent is not None:
+            should_turn_off_bluetti = not(bluetti_ac_output_on or bluetti_dc_output_on)
             # debug print
-            print(
-                f"BLUETTI: Total battery percent: {bluetti_status.bluetti_total_battery_percent}"
-            )
-            print(f"BLUETTI: AC output on: {bluetti_status.bluetti_ac_output_on}")
-            print(f"BLUETTI: DC output on: {bluetti_status.bluetti_dc_output_on}")
-            print(f"BLUETTI: AC output power: {bluetti_status.bluetti_ac_output_power}")
-            print(f"BLUETTI: AC INPUT: {bluetti_status.bluetti_ac_input_power}")
-            print(f"BLUETTI: DC INPUT: {bluetti_status.bluetti_dc_input_power}")
-
-            bluetti_is_charging = (
-                bluetti_status.bluetti_ac_input_power > 0
-                or bluetti_status.bluetti_dc_input_power > 0
-            )
+            print(f"BLUETTI: Total battery percent: {bluetti_total_battery_percent}")
+            print(f"BLUETTI: AC output on: {bluetti_ac_output_on}")
+            print(f"BLUETTI: DC output on: {bluetti_dc_output_on}")
+            print(f"BLUETTI: AC output power: {bluetti_ac_output_power}")
+            print(f"BLUETTI: DC output power: {bluetti_dc_output_power}")
+            print(f"BLUETTI: AC input: {bluetti_ac_input_power}")
+            print(f"BLUETTI: DC input: {bluetti_dc_input_power}")
+            
+            bluetti_is_charging = bluetti_ac_input_power > 0 or bluetti_dc_input_power > 0
 
             # turn on charger if bluetti is not charging and battery is not full
             if t110_online and not bluetti_is_charging and not t110_charging:
-                print("Turning on charger")
-                should_turn_off_bluetti = False
-                if bluetti_status.bluetti_total_battery_percent < 100:
+                if bluetti_total_battery_percent < 100:
+                    print("Turning on charger")
+                    should_turn_off_bluetti = False
                     await tapoController.turn_on()
                 if bluettiController.ac_turned_on:
                     print("Turning off AC output")
@@ -106,7 +110,9 @@ async def main(tapoController, bluettiController, fingerbotController):
                 await tapoController.turn_off()
                 if bluetti_ac_output_power == 0:
                     print("Turning off AC output - no consumption")
-                    bluettiController.power_off()
+                    bluettiController.turn_ac("OFF")
+                    bluettiController.turn_dc("OFF")
+                    should_turn_off_bluetti = True
 
             # turn AC on if t110 is offline and turn AC off if no consumption
             if (
@@ -121,6 +127,9 @@ async def main(tapoController, bluettiController, fingerbotController):
 
                 print("Turning on AC output")
                 bluettiController.turn_ac("ON")
+                await asyncio.sleep(2)
+                print("Turning on DC output")
+                bluettiController.turn_dc("ON")
                 should_turn_off_bluetti = False
 
                 await asyncio.sleep(70)
@@ -129,10 +138,12 @@ async def main(tapoController, bluettiController, fingerbotController):
 
                 if bluetti_status:
                     bluetti_ac_output_power = bluetti_status["ac_output_power"]
-
-                if bluetti_ac_output_power == 0:
+                    bluetti_dc_output_power = bluetti_status["dc_output_power"]
+                # if bluetti_ac_output_power == 0 - dc below is added for testing
+                if bluetti_ac_output_power == 0 and bluetti_dc_output_power == 0:
                     print("Turning Bluetti off - no consumption")
                     bluettiController.turn_ac("OFF")
+                    bluettiController.turn_dc("OFF") # DC just for testing
                     should_turn_off_bluetti = True
 
             if (
@@ -145,9 +156,13 @@ async def main(tapoController, bluettiController, fingerbotController):
                 await fingerbotController.press_button()
         else:
             print("Waiting to get bluetti status")
+            
+        print(f"CYCLE #{cycle_counter} FINISH")
+        await asyncio.sleep(30)  
 
         print("CYCLE END")
         await asyncio.sleep(30)
 
+load_dotenv()
 
 asyncio.run(main(TapoController(), BluettiController(), FingerBotController()))
