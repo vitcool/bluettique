@@ -9,9 +9,7 @@ from bluetti_utils import fetch_bluetti_status
 from state_handler import SystemState, handle_state
 
 async def main(tapoController, bluettiController, fingerbotController):
-    t110_online = False
-    t110_charging = False
-    tapo_initial_sucess = await tapoController.initialize()
+    await tapoController.initialize()
 
     def handle_interrupt(signal, frame):
         print("KeyboardInterrupt received, stopping services...")
@@ -20,12 +18,9 @@ async def main(tapoController, bluettiController, fingerbotController):
 
     signal.signal(signal.SIGINT, handle_interrupt)
 
-    if not tapo_initial_sucess:
-        print("Failed to initialize Tapo controller")
-
-    while not await bluettiController.initialize():
-        print("Failed to initialize Bluetooth controller")
-        await fingerbotController.press_button()
+    # while not await bluettiController.initialize():
+    #     print("Failed to initialize Bluetooth controller")
+    #     await fingerbotController.press_button()
 
     current_state = SystemState.IDLE
     

@@ -38,31 +38,52 @@ class Tapo:
         return await self.device.get_device_info()
 
 
+class TapoStatus:
+    def __init__(self, online=False, charging=False):
+        self.online = online
+        self.charging = charging
+
+    def set_online(self, online: bool):
+        """Set the online status and handle any additional logic."""
+        self.online = online
+        # You could add logging or other logic here if needed
+        print(f"Tapo status updated: online={self.online}")
+
+    def set_charging(self, charging: bool):
+        """Set the charging status and handle any additional logic."""
+        self.charging = charging
+        # You could add additional logic here if needed
+        print(f"Tapo status updated: charging={self.charging}")
+
+    def reset(self):
+        """Reset the status to its default values."""
+        self.online = False
+        self.charging = False
+        print("Tapo status reset to default.")
+
+
 class TapoController:
     def __init__(self):
         self.tapo = Tapo()
-        self.online = False
+        self.status = TapoStatus()
 
     async def initialize(self):
         try:   
             await self.tapo.initialize()
-            return True
+            self.status.set_online(True)
         except Exception:
-            return False
+            print("TAPO: Failed to initialize")
+            self.status.set_online(False)
 
     async def get_status(self):
-        result = {
-            "is_online": False,
-            "is_charging": False
-        }
         try:
             await self.tapo.initialize()
-            result["is_online"] = True
+            self.status.set_online(True)
             device_info = await self.tapo.get_state()
-            result["is_charging"] = device_info.device_on
-            return result
+            self.status.set_charging(device_info.device_on)
         except Exception:
-            return result
+            self.status.reset()
+            print("TAPO: Failed to get status")
 
     async def turn_on(self):
         await self.tapo.turn_on()
