@@ -85,10 +85,10 @@ class TapoController:
             self.status.reset()
             print("TAPO: Failed to get status")
 
-    async def turn_on(self):
+    async def start_charging(self):
         await self.tapo.turn_on()
         await self.tapo.get_state()
 
-    async def turn_off(self):
+    async def stop_charging(self):
         await self.tapo.turn_off()
         await self.tapo.get_state()

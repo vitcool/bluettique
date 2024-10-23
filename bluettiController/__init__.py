@@ -47,7 +47,6 @@ class BluettiStatus:
             self.info_received = True
 
         setattr(self, attr, value)
-        print(f"Bluetti status updated: {attr} = {value}")
 
     def get_status(self):
         """Return the current status of the Bluetti device as a dictionary."""
@@ -126,9 +125,6 @@ class BluettiMQTTService:
     def on_message(self, client, userdata, message):
         topic = message.topic
         payload = message.payload.decode()
-
-        # Print the whole topic message
-        print(f"Received message on topic {topic}: {payload}")
 
         if not self.device_connected:
             self.device_connected = True
@@ -248,8 +244,11 @@ class BluettiController:
         self.connection_set = False
 
     def get_status(self):
-        return self.bluetti.status.get_status()
-
+        status = self.bluetti.status.get_status()
+        self.ac_turned_on = status["ac_output_on"]
+        self.dc_turned_on = status["dc_output_on"]
+        return status
+    
     def stop(self):
         self.bluetti.stop_client()
         self.bluetti.stop_broker()

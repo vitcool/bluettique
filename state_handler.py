@@ -6,10 +6,12 @@ from enum import Enum
 class SystemState(Enum):
     INITIAL_CHECK = 0
     IDLE = 1
-    CHECK_STATUS = 2
-    CHARGING = 3
-    POWERED_ON = 4
-    POWERED_OFF = 5
+    LONG_IDLE = 2
+    CHECK_STATUS = 3
+    START_CHARGING = 4
+    STOP_CHARGING = 5
+    TURN_AC_ON = 6
+    TURN_OFF = 7
 
 
 async def handle_state(
@@ -30,139 +32,73 @@ async def handle_state(
 
         return SystemState.CHECK_STATUS
 
-    # don't forget to turn off bluetti after the initial check and if it does not used
-
     elif state == SystemState.IDLE:
-        print("System is idle. Waiting for conditions...")
         await asyncio.sleep(int(os.getenv("IDLE_INTERVAL")))
+        return SystemState.CHECK_STATUS
+    
+    elif state == SystemState.IDLE:
+        await asyncio.sleep(3 * int(os.getenv("IDLE_INTERVAL")))
         return SystemState.CHECK_STATUS
 
     elif state == SystemState.CHECK_STATUS:
-        print("Checking system status...")
-        print("Checking Tapo status...")
         await tapoController.get_status()
-        print("Tapo status", tapoController.status.get_status())
-        print("Bluetti status", bluettiController.get_status())
+        tapo_status = tapoController.status.get_status()
+        bluetti_status = bluettiController.get_status()
+        is_tapo_online = tapo_status.get('online')
+        is_tapo_charing = tapo_status.get('charging')
+
+        total_battery_percent_bluetti = bluetti_status.get("total_battery_percent")
+        ac_output_on_bluetti = bluetti_status.get("ac_output_on")
+        dc_output_on_bluetti = bluetti_status.get("dc_output_on")
+        ac_output_power_bluetti = bluetti_status.get("ac_output_power")
+        dc_output_power_bluetti = bluetti_status.get("dc_output_power")
+        
+        if is_tapo_online and not is_tapo_charing and total_battery_percent_bluetti < 100:
+            return SystemState.START_CHARGING
+        
+        if is_tapo_charing and total_battery_percent_bluetti == 100:
+            return SystemState.STOP_CHARGING
+        
+        if not is_tapo_online:
+            return SystemState.TURN_AC_ON
+        
+        if not ac_output_on_bluetti and not dc_output_on_bluetti and not is_tapo_charing:
+            return SystemState.TURN_OFF
+        
         return SystemState.IDLE
-
-    # # move the following to handle_state function
-    # cycle_counter += 1
-    # print(f"CYCLE #{cycle_counter} START")
-    # should_turn_on_bluetti = False
-
-    # # in case if bluetti is turned on manually
-    # if not bluettiController.turned_on:
-    #     print("Bluetti is turned off")
-    #     await bluettiController.initialize()
-
-    # if not tapo_initial_sucess:
-    #     tapo_initial_sucess = await tapoController.initialize()
-    #     if not tapo_initial_sucess:
-    #         print("Failed to initialize Tapo controller")
-
-    # tapo_status = await tapoController.get_status()
-    # if tapo_status:
-    #     if t110_online == True and tapo_status["is_online"] == False:
-    #         print("TAPO: Device went offline")
-    #         should_turn_on_bluetti = True
-
-    #     t110_online = tapo_status["is_online"]
-    #     t110_charging = tapo_status["is_charging"]
-
-    # print(f"TAPO: Is online: {t110_online}")
-    # print(f"TAPO: Is charging: {t110_charging}")
-
-    # if bluetti_status:
-    #     bluetti_total_battery_percent = bluetti_status["total_battery_percent"]
-    #     bluetti_ac_output_on = bluetti_status["ac_output_on"]
-    #     bluetti_dc_output_on = bluetti_status["dc_output_on"]
-    #     bluetti_ac_output_power = bluetti_status["ac_output_power"]
-    #     bluetti_dc_output_power = bluetti_status["dc_output_power"]
-    #     bluetti_ac_input_power = bluetti_status["ac_input_power"]
-    #     bluetti_dc_input_power = bluetti_status.get("dc_input_power", 0)
-
-    # if bluetti_total_battery_percent is not None:
-    #     should_turn_off_bluetti = not(bluetti_ac_output_on or bluetti_dc_output_on)
-    #     # debug print
-    #     print(f"BLUETTI: Total battery percent: {bluetti_total_battery_percent}")
-    #     print(f"BLUETTI: AC output on: {bluetti_ac_output_on}")
-    #     print(f"BLUETTI: DC output on: {bluetti_dc_output_on}")
-    #     print(f"BLUETTI: AC output power: {bluetti_ac_output_power}")
-    #     print(f"BLUETTI: DC output power: {bluetti_dc_output_power}")
-    #     print(f"BLUETTI: AC input: {bluetti_ac_input_power}")
-    #     print(f"BLUETTI: DC input: {bluetti_dc_input_power}")
-
-    #     bluetti_is_charging = bluetti_ac_input_power > 0 or bluetti_dc_input_power > 0
-
-    #     # turn on charger if bluetti is not charging and battery is not full
-    #     if t110_online and not bluetti_is_charging and not t110_charging:
-    #         if bluetti_total_battery_percent < 100:
-    #             print("Turning on charger")
-    #             should_turn_off_bluetti = False
-    #             await tapoController.turn_on()
-    #         if bluettiController.ac_turned_on:
-    #             print("Turning off AC output")
-    #             bluettiController.turn_ac("OFF")
-
-    #     # turn off charger if bluetti is charging and battery is full
-    #     if (
-    #         t110_online
-    #         and t110_charging
-    #         and bluetti_status.bluetti_total_battery_percent == 100
-    #     ):
-    #         print("Turning off charger")
-    #         await tapoController.turn_off()
-    #         if bluetti_ac_output_power == 0:
-    #             print("Turning off AC output - no consumption")
-    #             bluettiController.turn_ac("OFF")
-    #             bluettiController.turn_dc("OFF")
-    #             should_turn_off_bluetti = True
-
-    #     # turn AC on if t110 is offline and turn AC off if no consumption
-    #     if (
-    #         (bluettiController.turned_on or should_turn_on_bluetti)
-    #         and not bluetti_status.bluetti_ac_output_on
-    #         and (not t110_online or not tapo_initial_sucess)
-    #     ):
-    #         if not bluettiController.turned_on:
-    #             print("Turning on Bluetti")
-    #             await fingerbotController.press_button()
-    #             await bluettiController.initialize()
-
-    #         print("Turning on AC output")
-    #         bluettiController.turn_ac("ON")
-    #         await asyncio.sleep(2)
-    #         print("Turning on DC output")
-    #         bluettiController.turn_dc("ON")
-    #         should_turn_off_bluetti = False
-
-    #         await asyncio.sleep(70)
-
-    #         bluetti_status = await fetch_bluetti_status(bluettiController)
-
-    #         if bluetti_status:
-    #             bluetti_ac_output_power = bluetti_status["ac_output_power"]
-    #             bluetti_dc_output_power = bluetti_status["dc_output_power"]
-    #         # if bluetti_ac_output_power == 0 - dc below is added for testing
-    #         if bluetti_ac_output_power == 0 and bluetti_dc_output_power == 0:
-    #             print("Turning Bluetti off - no consumption")
-    #             bluettiController.turn_ac("OFF")
-    #             bluettiController.turn_dc("OFF") # DC just for testing
-    #             should_turn_off_bluetti = True
-
-    #     if (
-    #         bluettiController.turned_on
-    #         and should_turn_off_bluetti
-    #         and not bluetti_is_charging
-    #     ):
-    #         print("Turning off Bluetti")
-    #         bluettiController.power_off()
-    #         await fingerbotController.press_button()
-    # else:
-    #     print("Waiting to get bluetti status")
-
-    # print(f"CYCLE #{cycle_counter} FINISH")
-    # await asyncio.sleep(30)
-
-    # print("CYCLE END")
-    # await asyncio.sleep(30)
+    
+    elif state == SystemState.START_CHARGING:
+        await tapoController.start_charging()
+        # just for testing removing ac  - playing with dc only
+        # if bluettiController.ac_turned_on:
+        #     bluettiController.turn_ac("OFF")
+        if bluettiController.dc_turned_on:
+            bluettiController.turn_dc("OFF")
+        
+        return SystemState.IDLE
+    
+    elif state == SystemState.STOP_CHARGING:
+        await tapoController.stop_charging()
+        
+        return SystemState.TURN_OFF
+    
+    elif state == SystemState.TURN_OFF:
+        bluettiController.power_off()
+        await fingerbotController.press_button()
+        
+        return SystemState.IDLE
+    
+    elif state == SystemState.TURN_AC_ON:
+        if not bluettiController.turned_on:
+            await fingerbotController.press_button()
+            await bluettiController.initialize()
+        
+        if not bluettiController.ac_turned_on:
+            #  just for testing commented out ac - playing with dc only
+            # bluettiController.turn_ac("ON")
+            # await asyncio.sleep(2)
+            bluettiController.turn_dc("ON")
+        
+        return SystemState.LONG_IDLE
+    
+ 
