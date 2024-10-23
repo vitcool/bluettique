@@ -16,21 +16,21 @@ async def handle_state(
     state: SystemState, tapoController, bluettiController, fingerbotController
 ) -> SystemState:
     print("Handle ", state, " state")
-    
+
     if state == SystemState.INITIAL_CHECK:
         """May be repalced in the future if bluetti params are stored in a file"""
         print("Initial check started")
-        
+
         if not bluettiController.connection_set:
             await fingerbotController.press_button()
             await bluettiController.initialize()
-            
+
         while not bluettiController.get_status().get("info_received"):
             await asyncio.sleep(5)
 
-        return SystemState.CHECK_STATUS  
-    
-    # don't forget to remove bluetti after the initial check and if it does not used  
+        return SystemState.CHECK_STATUS
+
+    # don't forget to turn off bluetti after the initial check and if it does not used
 
     elif state == SystemState.IDLE:
         print("System is idle. Waiting for conditions...")
@@ -42,6 +42,7 @@ async def handle_state(
         print("Checking Tapo status...")
         await tapoController.get_status()
         print("Tapo status", tapoController.status.get_status())
+        print("Bluetti status", bluettiController.get_status())
         return SystemState.IDLE
 
     # # move the following to handle_state function
