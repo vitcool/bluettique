@@ -67,7 +67,7 @@ async def handle_state(
             return SystemState.TURN_AC_ON
 
         if (
-            not ac_output_on_bluetti
+            ac_output_power_bluetti == 0
             and not dc_output_on_bluetti
             and not is_tapo_charing
         ):
