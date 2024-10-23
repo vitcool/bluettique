@@ -46,20 +46,20 @@ class TapoStatus:
     def set_online(self, online: bool):
         """Set the online status and handle any additional logic."""
         self.online = online
-        # You could add logging or other logic here if needed
-        print(f"Tapo status updated: online={self.online}")
 
     def set_charging(self, charging: bool):
         """Set the charging status and handle any additional logic."""
         self.charging = charging
-        # You could add additional logic here if needed
-        print(f"Tapo status updated: charging={self.charging}")
 
     def reset(self):
         """Reset the status to its default values."""
         self.online = False
         self.charging = False
         print("Tapo status reset to default.")
+
+    def get_status(self):
+        """Get the current status as an object with properties 'online' and 'charging'."""
+        return {"online": self.online, "charging": self.charging}
 
 
 class TapoController:
@@ -68,7 +68,7 @@ class TapoController:
         self.status = TapoStatus()
 
     async def initialize(self):
-        try:   
+        try:
             await self.tapo.initialize()
             self.status.set_online(True)
         except Exception:

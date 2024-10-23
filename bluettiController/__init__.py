@@ -28,6 +28,53 @@ class Mosquitto:
         print("Mosquitto started.")
 
 
+class BluettiStatus:
+    def __init__(self):
+        """Initialize all status attributes."""
+        self.total_battery_percent = None
+        self.ac_output_on = None
+        self.dc_output_on = None
+        self.ac_output_power = None
+        self.dc_output_power = None
+        self.ac_input_power = None
+        self.dc_input_power = None
+        self.info_received = False
+
+    def update_status(self, attr, value):
+        """Update the status attribute with the given value."""
+
+        if not self.info_received:
+            self.info_received = True
+
+        setattr(self, attr, value)
+        print(f"Bluetti status updated: {attr} = {value}")
+
+    def get_status(self):
+        """Return the current status of the Bluetti device as a dictionary."""
+        return {
+            "total_battery_percent": self.total_battery_percent,
+            "ac_output_on": self.ac_output_on,
+            "dc_output_on": self.dc_output_on,
+            "ac_output_power": self.ac_output_power,
+            "dc_output_power": self.dc_output_power,
+            "ac_input_power": self.ac_input_power,
+            "dc_input_power": self.dc_input_power,
+        }
+
+    def reset_status(self):
+        """Reset all status attributes to None (or default values)."""
+        self.total_battery_percent = None
+        self.ac_output_on = None
+        self.dc_output_on = None
+        self.ac_output_power = None
+        self.dc_output_power = None
+        self.ac_input_power = None
+        self.dc_input_power = None
+        self.device_connected = False
+        self.info_received = False
+        print("Bluetti status reset to default.")
+
+
 class BluettiMQTTService:
     def __init__(self):
         self.broker_host = os.getenv("BLUETTI_BROKER_HOST")
@@ -44,6 +91,7 @@ class BluettiMQTTService:
         self.power_off_topic = f"bluetti/command/{self.device_name}/power_off"
 
         self.device_connected = False
+        self.status = BluettiStatus()
 
     async def connect(self):
         if self.device_connected:
@@ -54,7 +102,9 @@ class BluettiMQTTService:
         self.client.connect(self.broker_host)
         self.start_client()
         try:
-            await asyncio.wait_for(self._wait_for_pairing(), timeout=int(self.broker_connection_timeout))
+            await asyncio.wait_for(
+                self._wait_for_pairing(), timeout=int(self.broker_connection_timeout)
+            )
             return True
         except asyncio.TimeoutError:
             self.stop_broker()
@@ -81,8 +131,7 @@ class BluettiMQTTService:
 
         if not self.device_connected:
             self.device_connected = True
-            
-        # Update properties based on received messages
+
         topic_map = {
             "total_battery_percent": ("total_battery_percent", int),
             "ac_output_on": ("ac_output_on", lambda x: x == "ON"),
@@ -95,28 +144,9 @@ class BluettiMQTTService:
 
         for key, (attr, transform) in topic_map.items():
             if key in topic:
-                setattr(self, attr, transform(payload))
+                value = transform(payload)
+                self.status.update_status(attr, value)
                 break
-            
-    def get_status(self):
-        return {
-            "total_battery_percent": getattr(self, "total_battery_percent", None),
-            "ac_output_on": getattr(self, "ac_output_on", None),
-            "dc_output_on": getattr(self, "dc_output_on", None),
-            "ac_output_power": getattr(self, "ac_output_power", None),
-            "dc_output_power": getattr(self, "dc_output_power", None),
-            "ac_input_power": getattr(self, "ac_input_power", None),
-            "dc_input_power": getattr(self, "dc_input_power", None),
-        }
-
-    def reset_status(self):
-        self.total_battery_percent = None
-        self.ac_output_on = None
-        self.dc_output_on = None
-        self.ac_output_power = None
-        self.dc_output_power = None
-        self.ac_input_power = None
-        self.dc_input_power = None
 
     def start_client(self):
         self.client.loop_start()
@@ -145,7 +175,7 @@ class BluettiMQTTService:
 
     def stop_broker(self):
         """Stop the bluetti-mqtt broker subprocess."""
-        if hasattr(self, 'broker_process') and self.broker_process:
+        if hasattr(self, "broker_process") and self.broker_process:
             self.broker_process.terminate()
             self.broker_process.wait()
             print("bluetti-mqtt broker stopped successfully.")
@@ -170,7 +200,7 @@ class BluettiMQTTService:
             self.client.publish(self.dc_command_topic, state)
         else:
             print("Invalid state for DC output")
-            
+
     def power_off(self):
         self.client.publish(self.power_off_topic, "ON")
 
@@ -191,31 +221,33 @@ class BluettiController:
                 print("BluettiMQTTService connected.")
                 self.turned_on = True
                 return True
-            print(f"Retrying connection to BluettiMQTTService... (Attempt {attempt + 1})")
+            print(
+                f"Retrying connection to BluettiMQTTService... (Attempt {attempt + 1})"
+            )
             await asyncio.sleep(5)
         print("Failed to connect to BluettiMQTTService after 2 attempts.")
         return False
 
-    def turn_dc(self, state: str):   
+    def turn_dc(self, state: str):
         print("Bluetti: Turning DC device", state)
         self.dc_turned_on = state == "ON"
         self.bluetti.set_dc_output(state)
-        
+
     def turn_ac(self, state: str):
         print("Bluetti: Turning AC device", state)
         self.ac_turned_on = state == "ON"
         self.bluetti.set_ac_output(state)
-        
+
     def power_off(self):
         print("Bluetti: Turning off device")
         # self.bluetti.power_off() sometimes it works, sometimes it doesn't
         self.stop()
         # self.bluetti.reset_status()
         self.turned_on = False
-        
-    async def get_status(self):
-        return self.bluetti.get_status()
 
-    def stop(self): 
+    async def get_status(self):
+        return self.bluetti.status.get_status()
+
+    def stop(self):
         self.bluetti.stop_client()
         self.bluetti.stop_broker()

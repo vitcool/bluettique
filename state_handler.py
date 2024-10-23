@@ -2,27 +2,31 @@ import asyncio
 import os
 from enum import Enum
 
+
 class SystemState(Enum):
+    INITIAL_CHECK = 0
     IDLE = 1
     CHECK_STATUS = 2
     CHARGING = 3
     POWERED_ON = 4
     POWERED_OFF = 5
-    
-async def handle_state(state: SystemState, tapoController, bluettiController, fingerbotController) -> SystemState:
+
+
+async def handle_state(
+    state: SystemState, tapoController, bluettiController, fingerbotController
+) -> SystemState:
     print("Handle ", state, " state")
-    
+
     if state == SystemState.IDLE:
         print("System is idle. Waiting for conditions...")
         await asyncio.sleep(int(os.getenv("IDLE_INTERVAL")))
         return SystemState.CHECK_STATUS
-    
+
     elif state == SystemState.CHECK_STATUS:
         print("Checking system status...")
         print("Checking Tapo status...")
         await tapoController.get_status()
-        print("Tapo status - online", tapoController.status.online)
-        print("Tapo status - charging", tapoController.status.charging)
+        print("Tapo status", tapoController.status.get_status())
         return SystemState.IDLE
 
     # # move the following to handle_state function
@@ -60,7 +64,7 @@ async def handle_state(state: SystemState, tapoController, bluettiController, fi
     #     bluetti_dc_output_power = bluetti_status["dc_output_power"]
     #     bluetti_ac_input_power = bluetti_status["ac_input_power"]
     #     bluetti_dc_input_power = bluetti_status.get("dc_input_power", 0)
-    
+
     # if bluetti_total_battery_percent is not None:
     #     should_turn_off_bluetti = not(bluetti_ac_output_on or bluetti_dc_output_on)
     #     # debug print
@@ -71,7 +75,7 @@ async def handle_state(state: SystemState, tapoController, bluettiController, fi
     #     print(f"BLUETTI: DC output power: {bluetti_dc_output_power}")
     #     print(f"BLUETTI: AC input: {bluetti_ac_input_power}")
     #     print(f"BLUETTI: DC input: {bluetti_dc_input_power}")
-        
+
     #     bluetti_is_charging = bluetti_ac_input_power > 0 or bluetti_dc_input_power > 0
 
     #     # turn on charger if bluetti is not charging and battery is not full
@@ -140,9 +144,9 @@ async def handle_state(state: SystemState, tapoController, bluettiController, fi
     #         await fingerbotController.press_button()
     # else:
     #     print("Waiting to get bluetti status")
-        
+
     # print(f"CYCLE #{cycle_counter} FINISH")
-    # await asyncio.sleep(30)  
+    # await asyncio.sleep(30)
 
     # print("CYCLE END")
-    # await asyncio.sleep(30)    
+    # await asyncio.sleep(30)
