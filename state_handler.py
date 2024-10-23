@@ -35,8 +35,8 @@ async def handle_state(
     elif state == SystemState.IDLE:
         await asyncio.sleep(int(os.getenv("IDLE_INTERVAL")))
         return SystemState.CHECK_STATUS
-    
-    elif state == SystemState.IDLE:
+
+    elif state == SystemState.LONG_IDLE:
         await asyncio.sleep(3 * int(os.getenv("IDLE_INTERVAL")))
         return SystemState.CHECK_STATUS
 
@@ -44,29 +44,37 @@ async def handle_state(
         await tapoController.get_status()
         tapo_status = tapoController.status.get_status()
         bluetti_status = bluettiController.get_status()
-        is_tapo_online = tapo_status.get('online')
-        is_tapo_charing = tapo_status.get('charging')
+        is_tapo_online = tapo_status.get("online")
+        is_tapo_charing = tapo_status.get("charging")
 
         total_battery_percent_bluetti = bluetti_status.get("total_battery_percent")
         ac_output_on_bluetti = bluetti_status.get("ac_output_on")
         dc_output_on_bluetti = bluetti_status.get("dc_output_on")
         ac_output_power_bluetti = bluetti_status.get("ac_output_power")
         dc_output_power_bluetti = bluetti_status.get("dc_output_power")
-        
-        if is_tapo_online and not is_tapo_charing and total_battery_percent_bluetti < 100:
+
+        if (
+            is_tapo_online
+            and not is_tapo_charing
+            and total_battery_percent_bluetti < 100
+        ):
             return SystemState.START_CHARGING
-        
+
         if is_tapo_charing and total_battery_percent_bluetti == 100:
             return SystemState.STOP_CHARGING
-        
+
         if not is_tapo_online:
             return SystemState.TURN_AC_ON
-        
-        if not ac_output_on_bluetti and not dc_output_on_bluetti and not is_tapo_charing:
+
+        if (
+            not ac_output_on_bluetti
+            and not dc_output_on_bluetti
+            and not is_tapo_charing
+        ):
             return SystemState.TURN_OFF
-        
+
         return SystemState.IDLE
-    
+
     elif state == SystemState.START_CHARGING:
         await tapoController.start_charging()
         # just for testing removing ac  - playing with dc only
@@ -74,31 +82,29 @@ async def handle_state(
         #     bluettiController.turn_ac("OFF")
         if bluettiController.dc_turned_on:
             bluettiController.turn_dc("OFF")
-        
+
         return SystemState.IDLE
-    
+
     elif state == SystemState.STOP_CHARGING:
         await tapoController.stop_charging()
-        
+
         return SystemState.TURN_OFF
-    
+
     elif state == SystemState.TURN_OFF:
         bluettiController.power_off()
         await fingerbotController.press_button()
-        
+
         return SystemState.IDLE
-    
+
     elif state == SystemState.TURN_AC_ON:
         if not bluettiController.turned_on:
             await fingerbotController.press_button()
             await bluettiController.initialize()
-        
+
         if not bluettiController.ac_turned_on:
             #  just for testing commented out ac - playing with dc only
             # bluettiController.turn_ac("ON")
             # await asyncio.sleep(2)
             bluettiController.turn_dc("ON")
-        
+
         return SystemState.LONG_IDLE
-    
- 
