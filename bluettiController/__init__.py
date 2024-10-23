@@ -59,6 +59,7 @@ class BluettiStatus:
             "dc_output_power": self.dc_output_power,
             "ac_input_power": self.ac_input_power,
             "dc_input_power": self.dc_input_power,
+            "info_received": self.info_received,
         }
 
     def reset_status(self):
@@ -210,6 +211,7 @@ class BluettiController:
         self.mosquitto = Mosquitto()
         self.bluetti = BluettiMQTTService()
         self.turned_on = True
+        self.connection_set = False
         self.ac_turned_on = False
         self.dc_turned_on = False
 
@@ -219,8 +221,7 @@ class BluettiController:
         for attempt in range(2):
             if await self.bluetti.connect():
                 print("BluettiMQTTService connected.")
-                self.turned_on = True
-                return True
+                self.connection_set = True
             print(
                 f"Retrying connection to BluettiMQTTService... (Attempt {attempt + 1})"
             )
@@ -244,8 +245,9 @@ class BluettiController:
         self.stop()
         # self.bluetti.reset_status()
         self.turned_on = False
+        self.connection_set = False
 
-    async def get_status(self):
+    def get_status(self):
         return self.bluetti.status.get_status()
 
     def stop(self):
