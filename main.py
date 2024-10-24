@@ -1,21 +1,19 @@
 import asyncio
 import signal
 from dotenv import load_dotenv
-from fingerbotController import FingerBotController
-from tapoController import TapoController
-from bluettiController import BluettiController
-from enum import Enum, auto
-from bluetti_utils import fetch_bluetti_status
+from controllers.fingerbot import FingerBotController
+from controllers.tapo import TapoController
+from controllers.bluetti import BluettiController
 from state_handler import SystemState, handle_state
 
 
-async def main(tapoController, bluettiController, fingerbotController):
-    await tapoController.initialize()
-    await bluettiController.initialize()
+async def main(tapo_controller, bluetti_controller, fingerbot_controller):
+    await tapo_controller.initialize()
+    await bluetti_controller.initialize()
 
     def handle_interrupt(signal, frame):
         print("KeyboardInterrupt received, stopping services...")
-        bluettiController.stop()
+        bluetti_controller.stop()
         exit(0)
 
     signal.signal(signal.SIGINT, handle_interrupt)
@@ -24,7 +22,7 @@ async def main(tapoController, bluettiController, fingerbotController):
 
     while True:
         current_state = await handle_state(
-            current_state, tapoController, bluettiController, fingerbotController
+            current_state, tapo_controller, bluetti_controller, fingerbot_controller
         )
         await asyncio.sleep(1)
 
