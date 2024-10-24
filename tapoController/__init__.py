@@ -38,36 +38,57 @@ class Tapo:
         return await self.device.get_device_info()
 
 
+class TapoStatus:
+    def __init__(self, online=False, charging=False):
+        self.online = online
+        self.charging = charging
+
+    def set_online(self, online: bool):
+        """Set the online status and handle any additional logic."""
+        self.online = online
+
+    def set_charging(self, charging: bool):
+        """Set the charging status and handle any additional logic."""
+        self.charging = charging
+
+    def reset(self):
+        """Reset the status to its default values."""
+        self.online = False
+        self.charging = False
+        print("Tapo status reset to default.")
+
+    def get_status(self):
+        """Get the current status as an object with properties 'online' and 'charging'."""
+        return {"online": self.online, "charging": self.charging}
+
+
 class TapoController:
     def __init__(self):
         self.tapo = Tapo()
-        self.online = False
+        self.status = TapoStatus()
 
     async def initialize(self):
-        try:   
-            await self.tapo.initialize()
-            return True
-        except Exception:
-            return False
-
-    async def get_status(self):
-        result = {
-            "is_online": False,
-            "is_charging": False
-        }
         try:
             await self.tapo.initialize()
-            result["is_online"] = True
-            device_info = await self.tapo.get_state()
-            result["is_charging"] = device_info.device_on
-            return result
+            self.status.set_online(True)
         except Exception:
-            return result
+            print("TAPO: Failed to initialize")
+            self.status.set_online(False)
 
-    async def turn_on(self):
+    async def get_status(self):
+        try:
+            await self.tapo.initialize()
+            self.status.set_online(True)
+            device_info = await self.tapo.get_state()
+            self.status.set_charging(device_info.device_on)
+        except Exception:
+            self.status.reset()
+            print("TAPO: Failed to get status")
+
+    async def start_charging(self):
         await self.tapo.turn_on()
         await self.tapo.get_state()
 
-    async def turn_off(self):
+    async def stop_charging(self):
         await self.tapo.turn_off()
         await self.tapo.get_state()
