@@ -515,7 +515,7 @@ class FingerBotController:
                 connected = await self.fingerbot.connect()
             except Exception:
                 print("FINGERBOT: Connection failed, retrying...")
-        
+
         print("FINGERBOT: Connected")
         self.fingerbot.press_button()
         print("FINGERBOT: Button pressed")

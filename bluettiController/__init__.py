@@ -73,7 +73,7 @@ class BluettiStatus:
         self.device_connected = False
         self.info_received = False
         print("Bluetti status reset to default.")
-        
+
     def reset_output_status(self):
         self.ac_output_on = False
         self.dc_output_on = False
@@ -200,7 +200,9 @@ class BluettiMQTTService:
     def power_off(self):
         self.client.publish(self.power_off_topic, "ON")
 
+
 CONNECTION_RETRY_ATTEMPTS = 2
+
 
 class BluettiController:
     def __init__(self):
@@ -224,7 +226,9 @@ class BluettiController:
                 f"Retrying connection to BluettiMQTTService... (Attempt {attempt + 1})"
             )
             await asyncio.sleep(5)
-        print(f"Failed to connect to BluettiMQTTService after {CONNECTION_RETRY_ATTEMPTS} attempts.")
+        print(
+            f"Failed to connect to BluettiMQTTService after {CONNECTION_RETRY_ATTEMPTS} attempts."
+        )
         self.connection_set = False
         self.turned_on = False
 
@@ -252,7 +256,7 @@ class BluettiController:
         self.ac_turned_on = status["ac_output_on"]
         self.dc_turned_on = status["dc_output_on"]
         return status
-    
+
     def stop(self):
         self.bluetti.stop_client()
         self.bluetti.stop_broker()

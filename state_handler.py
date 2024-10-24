@@ -42,7 +42,7 @@ async def handle_state(
         await tapoController.get_status()
         tapo_status = tapoController.status.get_status()
         bluetti_status = bluettiController.get_status()
-        
+
         is_tapo_online = tapo_status.get("online")
         is_tapo_charing = tapo_status.get("charging")
 
@@ -51,16 +51,17 @@ async def handle_state(
         dc_output_on_bluetti = bluetti_status.get("dc_output_on")
         ac_output_power_bluetti = bluetti_status.get("ac_output_power")
         dc_output_power_bluetti = bluetti_status.get("dc_output_power")
-        
-        print("AC output power: ", ac_output_power_bluetti)
-        print("DC output power: ", dc_output_power_bluetti)
-        print("bluettiController.turned_on: ", bluettiController.turned_on)
-        print("bluettiController.ac_turned_on: ", bluettiController.ac_turned_on)
-        print("bluettiController.dc_turned_on: ", bluettiController.dc_turned_on)
-        print("ac_output_on_bluetti: ", ac_output_on_bluetti)
-        print("dc_output_on_bluetti: ", dc_output_on_bluetti)
-        print("is_tapo_charing: ", is_tapo_charing)
-        print("is_tapo_online: ", is_tapo_online)
+
+        # pring only in dev mode
+        # print("AC output power: ", ac_output_power_bluetti)
+        # print("DC output power: ", dc_output_power_bluetti)
+        # print("bluettiController.turned_on: ", bluettiController.turned_on)
+        # print("bluettiController.ac_turned_on: ", bluettiController.ac_turned_on)
+        # print("bluettiController.dc_turned_on: ", bluettiController.dc_turned_on)
+        # print("ac_output_on_bluetti: ", ac_output_on_bluetti)
+        # print("dc_output_on_bluetti: ", dc_output_on_bluetti)
+        # print("is_tapo_charing: ", is_tapo_charing)
+        # print("is_tapo_online: ", is_tapo_online)
 
         if (
             is_tapo_online
@@ -107,16 +108,16 @@ async def handle_state(
         return SystemState.IDLE
 
     elif state == SystemState.TURN_AC_ON:
-        if not bluettiController.turned_on or not bluettiController.connection_set :
+        if not bluettiController.turned_on or not bluettiController.connection_set:
             await fingerbotController.press_button()
             await bluettiController.initialize()
 
-        #  just for testing commented out ac - playing with dc only
+        # just for testing commented out ac - playing with dc only
         # if not bluettiController.ac_turned_on:
-            # bluettiController.turn_ac("ON")
-            # await asyncio.sleep(2)
-            
-        if not bluettiController.dc_turned_on:    
+        # bluettiController.turn_ac("ON")
+        # await asyncio.sleep(2)
+
+        if not bluettiController.dc_turned_on:
             bluettiController.turn_dc("ON")
 
         return SystemState.LONG_IDLE
