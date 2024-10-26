@@ -7,6 +7,8 @@ async def handle_state(
     state: SystemState, tapo_controller, bluetti_controller, fingerbot_controller
 ) -> SystemState:
     print("Handle ", state, " state")
+    is_dev_env = os.getenv("ENV") == "dev"
+    is_prod_env = os.getenv("ENV") == "prod"
 
     if state == SystemState.INITIAL_CHECK:
         """May be repalced in the future if bluetti params are stored in a file"""
@@ -41,16 +43,16 @@ async def handle_state(
         ac_output_power_bluetti = bluetti_status.get("ac_output_power")
         dc_output_power_bluetti = bluetti_status.get("dc_output_power")
 
-        # pring only in dev mode
-        # print("AC output power: ", ac_output_power_bluetti)
-        # print("DC output power: ", dc_output_power_bluetti)
-        # print("bluetti_controller.turned_on: ", bluetti_controller.turned_on)
-        # print("bluetti_controller.ac_turned_on: ", bluetti_controller.ac_turned_on)
-        # print("bluetti_controller.dc_turned_on: ", bluetti_controller.dc_turned_on)
-        # print("ac_output_on_bluetti: ", ac_output_on_bluetti)
-        # print("dc_output_on_bluetti: ", dc_output_on_bluetti)
-        # print("is_tapo_charing: ", is_tapo_charing)
-        # print("is_tapo_online: ", is_tapo_online)
+        if is_dev_env:
+            print("AC output power: ", ac_output_power_bluetti)
+            print("DC output power: ", dc_output_power_bluetti)
+            print("bluetti_controller.turned_on: ", bluetti_controller.turned_on)
+            print("bluetti_controller.ac_turned_on: ", bluetti_controller.ac_turned_on)
+            print("bluetti_controller.dc_turned_on: ", bluetti_controller.dc_turned_on)
+            print("ac_output_on_bluetti: ", ac_output_on_bluetti)
+            print("dc_output_on_bluetti: ", dc_output_on_bluetti)
+            print("is_tapo_charing: ", is_tapo_charing)
+            print("is_tapo_online: ", is_tapo_online)
 
         if (
             is_tapo_online
@@ -77,11 +79,11 @@ async def handle_state(
 
     elif state == SystemState.START_CHARGING:
         await tapo_controller.start_charging()
-        # just for testing removing ac  - playing with dc only
-        # if bluetti_controller.ac_turned_on:
-        #     bluetti_controller.turn_ac("OFF")
-        if bluetti_controller.dc_turned_on:
+        if is_dev_env and bluetti_controller.dc_turned_on:
             bluetti_controller.turn_dc("OFF")
+
+        if is_prod_env and bluetti_controller.ac_turned_on:
+            bluetti_controller.turn_ac("OFF")
 
         return SystemState.IDLE
 
@@ -101,12 +103,11 @@ async def handle_state(
             await fingerbot_controller.press_button()
             await bluetti_controller.initialize()
 
-        # just for testing commented out ac - playing with dc only
-        # if not bluetti_controller.ac_turned_on:
-        # bluetti_controller.turn_ac("ON")
-        # await asyncio.sleep(2)
+        if is_prod_env and not bluetti_controller.ac_turned_on:
+            bluetti_controller.turn_ac("ON")
+            await asyncio.sleep(2)
 
-        if not bluetti_controller.dc_turned_on:
+        if is_dev_env and not bluetti_controller.dc_turned_on:
             bluetti_controller.turn_dc("ON")
 
         return SystemState.LONG_IDLE
