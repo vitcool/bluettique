@@ -1,5 +1,5 @@
-async def fetch_bluetti_status(bluettiController):
-    bluetti_status = await bluettiController.get_status()
+async def fetch_bluetti_status(bluetti_controller):
+    bluetti_status = await bluetti_controller.get_status()
     if bluetti_status:
         return {
             "battery_percent": bluetti_status["total_battery_percent"],

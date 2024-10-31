@@ -5,11 +5,10 @@ import pygatt
 import hashlib
 import secrets
 import asyncio
-import os
-from Crypto.Cipher import AES
+from binascii import hexlify
 from struct import pack, unpack
 from enum import Enum
-from binascii import hexlify
+from Crypto.Cipher import AES
 
 
 class Coder(Enum):
@@ -289,7 +288,7 @@ class XRequest:
         return self.split_packet(2, encrypted_data)
 
 
-class FingerBot:
+class FingerBotService:
     NOTIF_UUID = "00002b10-0000-1000-8000-00805f9b34fb"
     CHAR_UUID = "00002b11-0000-1000-8000-00805f9b34fb"
 
@@ -494,30 +493,3 @@ class FingerBot:
 
     def disconnect(self):
         self.adapter.stop()
-
-
-class FingerBotController:
-    def __init__(self):
-        fingerbot_local_key = os.getenv("FINGERBOT_LOCAL_KEY")
-        fingerbot_mac = os.getenv("FINGERBOT_MAC")
-        fingerbot_uuid = os.getenv("FINGERBOT_UUID")
-        fingerbot_dev_id = os.getenv("FINGERBOT_DEV_ID")
-
-        self.fingerbot = FingerBot(
-            fingerbot_mac, fingerbot_local_key, fingerbot_uuid, fingerbot_dev_id
-        )
-
-    async def press_button(self):
-        connected = False
-        self.fingerbot.pairing_complete = False
-        while not connected:
-            try:
-                connected = await self.fingerbot.connect()
-            except Exception:
-                print("FINGERBOT: Connection failed, retrying...")
-
-        print("FINGERBOT: Connected")
-        self.fingerbot.press_button()
-        print("FINGERBOT: Button pressed")
-        self.fingerbot.disconnect()
-        print("FINGERBOT: Disconnected")
