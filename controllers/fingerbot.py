@@ -4,14 +4,16 @@ from services.fingerbot import FingerBotService
 
 class FingerBotController:
     def __init__(self):
-        fingerbot_local_key = os.getenv("FINGERBOT_LOCAL_KEY")
-        fingerbot_mac = os.getenv("FINGERBOT_MAC")
-        fingerbot_uuid = os.getenv("FINGERBOT_UUID")
-        fingerbot_dev_id = os.getenv("FINGERBOT_DEV_ID")
+        fingerbot_local_key = os.getenv("FINGERBOT_LOCAL_KEY_MAIN")
+        fingerbot_mac = os.getenv("FINGERBOT_MAC_MAIN")
+        fingerbot_uuid = os.getenv("FINGERBOT_UUID_MAIN")
+        fingerbot_dev_id = os.getenv("FINGERBOT_DEV_ID_MAIN")
 
         self.fingerbot = FingerBotService(
             fingerbot_mac, fingerbot_local_key, fingerbot_uuid, fingerbot_dev_id
         )
+        
+        # add the second device here
 
     async def press_button(self):
         connected = False
