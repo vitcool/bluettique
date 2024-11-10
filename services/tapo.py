@@ -5,6 +5,7 @@ from tapo import ApiClient
 
 class TapoService:
     def __init__(self):
+        # pass the following as params
         self.tapo_username = os.getenv("TAPO_USERNAME")
         self.tapo_password = os.getenv("TAPO_PASSWORD")
         self.ip_address = os.getenv("TAPO_IP_ADDRESS")
