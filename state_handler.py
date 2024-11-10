@@ -1,12 +1,13 @@
 import asyncio
 import os
+import logging
 from models.system_state import SystemState
 
 
 async def handle_state(
     state: SystemState, tapo_controller, bluetti_controller, fingerbot_controller
 ) -> SystemState:
-    print("Handle ", state, " state")
+    logging.info(f"Handle {state} state")
     is_dev_env = os.getenv("ENV") == "dev"
     is_prod_env = os.getenv("ENV") == "prod"
 
@@ -43,17 +44,16 @@ async def handle_state(
         ac_output_power_bluetti = bluetti_status.get("ac_output_power")
         dc_output_power_bluetti = bluetti_status.get("dc_output_power")
 
-        if is_dev_env:
-            print("AC output power: ", ac_output_power_bluetti)
-            print("DC output power: ", dc_output_power_bluetti)
-            print("bluetti_controller.turned_on: ", bluetti_controller.turned_on)
-            print("bluetti_controller.ac_turned_on: ", bluetti_controller.ac_turned_on)
-            print("bluetti_controller.dc_turned_on: ", bluetti_controller.dc_turned_on)
-            print("bluetti_controller.total_battery_percent_bluetti: ", total_battery_percent_bluetti)
-            print("ac_output_on_bluetti: ", ac_output_on_bluetti)
-            print("dc_output_on_bluetti: ", dc_output_on_bluetti)
-            print("is_tapo_charing: ", is_tapo_charing)
-            print("is_tapo_online: ", is_tapo_online)
+        logging.debug(f"AC output power: {ac_output_power_bluetti}")
+        logging.debug(f"DC output power: {dc_output_power_bluetti}")
+        logging.debug(f"bluetti_controller.turned_on: {bluetti_controller.turned_on}")
+        logging.debug(f"bluetti_controller.ac_turned_on: {bluetti_controller.ac_turned_on}")
+        logging.debug(f"bluetti_controller.dc_turned_on: {bluetti_controller.dc_turned_on}")
+        logging.debug(f"bluetti_controller.total_battery_percent_bluetti: {total_battery_percent_bluetti}")
+        logging.debug(f"ac_output_on_bluetti: {ac_output_on_bluetti}")
+        logging.debug(f"dc_output_on_bluetti: {dc_output_on_bluetti}")
+        logging.debug(f"is_tapo_charing: {is_tapo_charing}")
+        logging.debug(f"is_tapo_online: {is_tapo_online}")
 
         if (
             is_tapo_online

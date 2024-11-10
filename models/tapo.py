@@ -1,3 +1,5 @@
+import logging
+
 class TapoStatus:
     def __init__(self, online=False, charging=False):
         self.online = online
@@ -15,7 +17,7 @@ class TapoStatus:
         """Reset the status to its default values."""
         self.online = False
         self.charging = False
-        print("Tapo status reset to default.")
+        logging.debug("Tapo status reset to default.")
 
     def get_status(self):
         """Get the current status as an object with properties 'online' and 'charging'."""

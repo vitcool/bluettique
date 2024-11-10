@@ -1,6 +1,7 @@
 import asyncio
 import os
 import subprocess
+import logging
 from models.bluetti import BluettiStatus
 import paho.mqtt.client as mqtt
 
@@ -49,7 +50,7 @@ class BluettiMQTTService:
         if rc == 0:
             client.subscribe(self.subscribe_topic)
         else:
-            print(f"Failed to connect, return code {rc}")
+            logging.debug(f"Failed to connect, return code {rc}")
 
     def on_message(self, client, userdata, message):
         topic = message.topic
@@ -93,16 +94,16 @@ class BluettiMQTTService:
                 command, stdout=subprocess.PIPE, stderr=subprocess.PIPE
             )
         except Exception as e:
-            print(f"Failed to start bluetti-mqtt broker: {e}")
+            logging.debug(f"Failed to start bluetti-mqtt broker: {e}")
 
     def stop_broker(self):
         """Stop the bluetti-mqtt broker subprocess."""
         if hasattr(self, "broker_process") and self.broker_process:
             self.broker_process.terminate()
             self.broker_process.wait()
-            print("bluetti-mqtt broker stopped successfully.")
+            logging.debug("bluetti-mqtt broker stopped successfully.")
         else:
-            print("No broker process found to stop.")
+            logging.debug("No broker process found to stop.")
 
     def stop_client(self):
         self.client.loop_stop()
@@ -114,14 +115,14 @@ class BluettiMQTTService:
             self.client.publish(self.ac_command_topic, state)
             self.ac_output_on = state == "ON"
         else:
-            print("Invalid state for AC output")
+            logging.debug("Invalid state for AC output")
 
     def set_dc_output(self, state: str):
         """Turn DC output ON/OFF"""
         if state in ["ON", "OFF"]:
             self.client.publish(self.dc_command_topic, state)
         else:
-            print("Invalid state for DC output")
+            logging.debug("Invalid state for DC output")
 
     def power_off(self):
         self.client.publish(self.power_off_topic, "ON")

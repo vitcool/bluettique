@@ -1,3 +1,5 @@
+import logging
+
 class BluettiStatus:
     def __init__(self):
         """Initialize all status attributes."""
@@ -42,7 +44,7 @@ class BluettiStatus:
         self.dc_input_power = None
         self.device_connected = False
         self.info_received = False
-        print("Bluetti status reset to default.")
+        logging.debug("Bluetti status reset to default.")
 
     def reset_output_status(self):
         self.ac_output_on = False

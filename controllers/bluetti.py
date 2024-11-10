@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from services.bluettiMqtt import BluettiMQTTService
 from services.mosquitto import MosquittoService
 
@@ -16,35 +17,35 @@ class BluettiController:
 
     async def initialize(self):
         self.mosquitto.check()
-        print("BluettiController initialized.")
+        logging.info("BluettiController initialized.")
         for attempt in range(CONNECTION_RETRY_ATTEMPTS):
             if await self.bluetti.connect():
-                print("BluettiMQTTService connected.")
+                logging.info("BluettiMQTTService connected.")
                 self.connection_set = True
                 self.turned_on = True
                 return
-            print(
+            logging.info(
                 f"Retrying connection to BluettiMQTTService... (Attempt {attempt + 1})"
             )
             await asyncio.sleep(5)
-        print(
+        logging.info(
             f"Failed to connect to BluettiMQTTService after {CONNECTION_RETRY_ATTEMPTS} attempts."
         )
         self.connection_set = False
         self.turned_on = False
 
     def turn_dc(self, state: str):
-        print("Bluetti: Turning DC device", state)
+        logging.info(f"Bluetti: Turning DC device {state}")
         self.dc_turned_on = state == "ON"
         self.bluetti.set_dc_output(state)
 
     def turn_ac(self, state: str):
-        print("Bluetti: Turning AC device", state)
+        logging.info(f"Bluetti: Turning AC device {state}")
         self.ac_turned_on = state == "ON"
         self.bluetti.set_ac_output(state)
 
     def power_off(self):
-        print("Bluetti: Turning off device")
+        logging.info("Bluetti: Turning off device")
         # self.bluetti.power_off() sometimes it works, sometimes it doesn't
         self.stop()
         # self.bluetti.reset_status()

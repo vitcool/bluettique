@@ -1,5 +1,6 @@
 import subprocess
 import os
+import logging
 
 
 class MosquittoService:
@@ -11,14 +12,14 @@ class MosquittoService:
                 .strip()
             )
             if status_output == "active":
-                print("Mosquitto is running.")
+                logging.debug("Mosquitto is running.")
             else:
-                print("Mosquitto is not running, starting it...")
+                logging.debug("Mosquitto is not running, starting it...")
                 self.start_mosquitto()
         except subprocess.CalledProcessError:
-            print("Mosquitto is not installed or not found.")
+            logging.debug("Mosquitto is not installed or not found.")
             self.start_mosquitto()
 
     def start_mosquitto(self):
         os.system("sudo systemctl start mosquitto")
-        print("Mosquitto started.")
+        logging.info("Mosquitto started.")

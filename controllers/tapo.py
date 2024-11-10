@@ -1,3 +1,4 @@
+import logging
 from services.tapo import TapoService
 from models.tapo import TapoStatus
 
@@ -12,7 +13,7 @@ class TapoController:
             await self.tapo.initialize()
             self.status.set_online(True)
         except Exception:
-            print("TAPO: Failed to initialize")
+            logging.debug("TAPO: Failed to initialize")
             self.status.set_online(False)
 
     async def get_status(self):
@@ -23,7 +24,7 @@ class TapoController:
             self.status.set_charging(device_info.device_on)
         except Exception:
             self.status.reset()
-            print("TAPO: Failed to get status")
+            logging.debug("TAPO: Failed to get status")
 
     async def start_charging(self):
         await self.tapo.turn_on()
