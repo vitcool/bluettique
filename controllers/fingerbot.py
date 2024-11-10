@@ -1,4 +1,5 @@
 import os
+import logging
 from services.fingerbot import FingerBotService
 
 
@@ -33,13 +34,13 @@ class FingerBotController:
             try:
                 connected = await fingerbot_service.connect()
             except Exception:
-                print(f"{device_name}: Connection failed, retrying...")
+                logging.debug(f"{device_name}: Connection failed, retrying...")
 
-        print(f"{device_name}: Connected")
+        logging.debug(f"{device_name}: Connected")
         fingerbot_service.press_button()
-        print(f"{device_name}: Button pressed")
+        logging.info(f"{device_name}: Button pressed")
         fingerbot_service.disconnect()
-        print(f"{device_name}: Disconnected")
+        logging.debug(f"{device_name}: Disconnected")
 
     async def press_button(self, press_additional=True):
         await self.press_button_for_device(self.fingerbot_main, "FINGERBOT_MAIN")

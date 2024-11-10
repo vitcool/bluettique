@@ -1,11 +1,11 @@
 import os
 import asyncio
+import logging
 from tapo import ApiClient
 
 
 class TapoService:
     def __init__(self):
-        # pass the following as params
         self.tapo_username = os.getenv("TAPO_USERNAME")
         self.tapo_password = os.getenv("TAPO_PASSWORD")
         self.ip_address = os.getenv("TAPO_IP_ADDRESS")
@@ -14,9 +14,9 @@ class TapoService:
     async def initialize(self):
         try:
             await asyncio.wait_for(self._login(), timeout=20)
-            print("TAPO: Pairing successful")
+            logging.info("TAPO: Pairing successful")
         except Exception:
-            print("TAPO: Pairing failed")
+            logging.info("TAPO: Pairing failed")
             raise
 
     async def _login(self):
@@ -24,15 +24,15 @@ class TapoService:
             client = ApiClient(self.tapo_username, self.tapo_password)
             self.device = await client.p110(self.ip_address)
         except Exception as e:
-            print(f"TAPO: Login failed with error: {e}")
+            logging.debug(f"TAPO: Login failed with error: {e}")
             raise
 
     async def turn_on(self):
-        print("TAPO: Turning device on...")
+        logging.info("TAPO: Turning device on...")
         await self.device.on()
 
     async def turn_off(self):
-        print("TAPO: Turning device off...")
+        logging.info("TAPO: Turning device off...")
         await self.device.off()
 
     async def get_state(self):

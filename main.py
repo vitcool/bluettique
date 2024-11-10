@@ -1,5 +1,7 @@
 import asyncio
 import signal
+import logging
+import os
 from dotenv import load_dotenv
 from controllers.fingerbot import FingerBotController
 from controllers.tapo import TapoController
@@ -8,11 +10,21 @@ from state_handler import SystemState, handle_state
 
 
 async def main(tapo_controller, bluetti_controller, fingerbot_controller):
+    is_dev_env = os.getenv("ENV") == "dev"
+    
+    logging.basicConfig(
+        filename='logs/app.txt',
+        level=logging.DEBUG if is_dev_env else logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+    )
+    
+    logging.info("Starting services...")
+
     await tapo_controller.initialize()
     await bluetti_controller.initialize()
 
     def handle_interrupt(signal, frame):
-        print("KeyboardInterrupt received, stopping services...")
+        logging.info("KeyboardInterrupt received, stopping services...")
         bluetti_controller.stop()
         exit(0)
 
