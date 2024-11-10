@@ -7,19 +7,11 @@ from controllers.fingerbot import FingerBotController
 from controllers.tapo import TapoController
 from controllers.bluetti import BluettiController
 from state_handler import SystemState, handle_state
+from utils.logger import setup_logging
 
 
 async def main(tapo_controller, bluetti_controller, fingerbot_controller):
-    is_dev_env = os.getenv("ENV") == "dev"
-    folder_path = 'logs'
-    
-    os.makedirs(folder_path, exist_ok=True)
-    
-    logging.basicConfig(
-        filename=f'{folder_path}/log.txt',
-        level=logging.DEBUG if is_dev_env else logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s',
-    )
+    setup_logging()
     
     logging.info("Starting services...")
 
