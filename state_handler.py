@@ -65,11 +65,13 @@ async def handle_state(
         if is_tapo_charing and total_battery_percent_bluetti == 100:
             return SystemState.STOP_CHARGING
 
-        if is_tapo_charing and not ac_output_on_bluetti and not dc_output_on_bluetti:
+        if not is_tapo_online and not ac_output_on_bluetti and not dc_output_on_bluetti:
             return SystemState.TURN_AC_ON
 
         if (
             bluetti_controller.turned_on
+            and ac_output_power_bluetti == 0
+            and dc_output_power_bluetti == 0
             and not is_tapo_charing
         ):
             return SystemState.TURN_OFF
