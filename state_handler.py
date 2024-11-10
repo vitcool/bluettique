@@ -55,15 +55,15 @@ async def handle_state(
             print("is_tapo_charing: ", is_tapo_charing)
             print("is_tapo_online: ", is_tapo_online)
 
-        # if (
-        #     is_tapo_online
-        #     and not is_tapo_charing
-        #     and total_battery_percent_bluetti < 100
-        # ):
-        #     return SystemState.START_CHARGING
+        if (
+            is_tapo_online
+            and not is_tapo_charing
+            and total_battery_percent_bluetti < 100
+        ):
+            return SystemState.START_CHARGING
 
-        # if is_tapo_charing and total_battery_percent_bluetti == 100:
-        #     return SystemState.STOP_CHARGING
+        if is_tapo_charing and total_battery_percent_bluetti == 100:
+            return SystemState.STOP_CHARGING
 
         if is_tapo_charing and not ac_output_on_bluetti and not dc_output_on_bluetti:
             return SystemState.TURN_AC_ON
@@ -93,7 +93,7 @@ async def handle_state(
 
     elif state == SystemState.TURN_OFF:
         bluetti_controller.power_off()
-        await fingerbot_controller.press_button()
+        await fingerbot_controller.press_button(False)
 
         return SystemState.IDLE
 
