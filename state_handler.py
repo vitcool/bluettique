@@ -49,6 +49,7 @@ async def handle_state(
             print("bluetti_controller.turned_on: ", bluetti_controller.turned_on)
             print("bluetti_controller.ac_turned_on: ", bluetti_controller.ac_turned_on)
             print("bluetti_controller.dc_turned_on: ", bluetti_controller.dc_turned_on)
+            print("bluetti_controller.total_battery_percent_bluetti: ", total_battery_percent_bluetti)
             print("ac_output_on_bluetti: ", ac_output_on_bluetti)
             print("dc_output_on_bluetti: ", dc_output_on_bluetti)
             print("is_tapo_charing: ", is_tapo_charing)
