@@ -11,9 +11,12 @@ from state_handler import SystemState, handle_state
 
 async def main(tapo_controller, bluetti_controller, fingerbot_controller):
     is_dev_env = os.getenv("ENV") == "dev"
+    folder_path = 'logs'
+    
+    os.makedirs(folder_path, exist_ok=True)
     
     logging.basicConfig(
-        filename='logs/app.txt',
+        filename=f'{folder_path}/log.txt',
         level=logging.DEBUG if is_dev_env else logging.INFO,
         format='%(asctime)s - %(levelname)s - %(message)s',
     )
