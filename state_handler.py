@@ -1,6 +1,7 @@
 import asyncio
 import os
 import logging
+import psutil
 from models.system_state import SystemState
 
 
@@ -24,6 +25,8 @@ async def handle_state(
 
     elif state == SystemState.IDLE:
         await asyncio.sleep(int(os.getenv("IDLE_INTERVAL")))
+        logging.info(f"Memory usage: {psutil.virtual_memory().percent}%")
+        logging.info(f"CPU usage: {psutil.cpu_percent()}%")
         return SystemState.CHECK_STATUS
 
     elif state == SystemState.LONG_IDLE:
@@ -44,16 +47,16 @@ async def handle_state(
         ac_output_power_bluetti = bluetti_status.get("ac_output_power")
         dc_output_power_bluetti = bluetti_status.get("dc_output_power")
 
-        logging.debug(f"AC output power: {ac_output_power_bluetti}")
-        logging.debug(f"DC output power: {dc_output_power_bluetti}")
-        logging.debug(f"bluetti_controller.turned_on: {bluetti_controller.turned_on}")
-        logging.debug(f"bluetti_controller.ac_turned_on: {bluetti_controller.ac_turned_on}")
-        logging.debug(f"bluetti_controller.dc_turned_on: {bluetti_controller.dc_turned_on}")
-        logging.debug(f"bluetti_controller.total_battery_percent_bluetti: {total_battery_percent_bluetti}")
-        logging.debug(f"ac_output_on_bluetti: {ac_output_on_bluetti}")
-        logging.debug(f"dc_output_on_bluetti: {dc_output_on_bluetti}")
-        logging.debug(f"is_tapo_charing: {is_tapo_charing}")
-        logging.debug(f"is_tapo_online: {is_tapo_online}")
+        logging.info(f"AC output power: {ac_output_power_bluetti}")
+        logging.info(f"DC output power: {dc_output_power_bluetti}")
+        logging.info(f"bluetti_controller.turned_on: {bluetti_controller.turned_on}")
+        logging.info(f"bluetti_controller.ac_turned_on: {bluetti_controller.ac_turned_on}")
+        logging.info(f"bluetti_controller.dc_turned_on: {bluetti_controller.dc_turned_on}")
+        logging.info(f"bluetti_controller.total_battery_percent_bluetti: {total_battery_percent_bluetti}")
+        logging.info(f"ac_output_on_bluetti: {ac_output_on_bluetti}")
+        logging.info(f"dc_output_on_bluetti: {dc_output_on_bluetti}")
+        logging.info(f"is_tapo_charing: {is_tapo_charing}")
+        logging.info(f"is_tapo_online: {is_tapo_online}")
 
         if (
             is_tapo_online
@@ -75,6 +78,9 @@ async def handle_state(
             and not is_tapo_charing
         ):
             return SystemState.TURN_OFF
+        
+        if (ac_output_on_bluetti and ac_output_power_bluetti > 0):
+            return SystemState.TURN_DC_OFF
 
         return SystemState.IDLE
 
@@ -107,8 +113,15 @@ async def handle_state(
         if is_prod_env and not bluetti_controller.ac_turned_on:
             bluetti_controller.turn_ac("ON")
             await asyncio.sleep(2)
+            bluetti_controller.turn_dc("ON")
+            await asyncio.sleep(2)
 
         if is_dev_env and not bluetti_controller.dc_turned_on:
             bluetti_controller.turn_dc("ON")
 
+        return SystemState.IDLE
+    
+    elif state == SystemState.TURN_DC_OFF:
+        bluetti_controller.turn_dc("OFF")
+        
         return SystemState.LONG_IDLE

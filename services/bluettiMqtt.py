@@ -9,6 +9,8 @@ import paho.mqtt.client as mqtt
 class BluettiMQTTService:
     def __init__(self):
         self.broker_host = os.getenv("BLUETTI_BROKER_HOST")
+        self.broker_port = os.getenv("BLUETTI_BROKER_PORT")
+        logging.debug(f"Connecting to MQTT broker at {self.broker_host}:{self.broker_port}")
         self.mac_address = os.getenv("BLUETTI_MAC_ADDRESS")
         self.device_name = os.getenv("BLUETTI_DEVICE_NAME")
         self.broker_interval = os.getenv("BLUETTI_BROKER_INTERVAL")
@@ -25,20 +27,28 @@ class BluettiMQTTService:
         self.status = BluettiStatus()
 
     async def connect(self):
-        if self.device_connected:
-            self.device_connected = False
-        self.start_broker()
-        self.client.on_connect = self.on_connect
-        self.client.on_message = self.on_message
-        self.client.connect(self.broker_host)
-        self.start_client()
         try:
-            await asyncio.wait_for(
-                self._wait_for_pairing(), timeout=int(self.broker_connection_timeout)
-            )
-            return True
-        except asyncio.TimeoutError:
-            self.stop_broker()
+            if self.device_connected:
+                self.device_connected = False
+            self.start_broker()
+            self.client.on_connect = self.on_connect
+            self.client.on_message = self.on_message
+            self.client.enable_logger()
+            try:
+                self.client.connect(self.broker_host, int(self.broker_port))
+            except Exception as e:
+                logging.error(f"MQTT connection failed: {e}")
+            self.start_client()
+            try:
+                await asyncio.wait_for(
+                    self._wait_for_pairing(), timeout=int(self.broker_connection_timeout)
+                )
+                return True
+            except asyncio.TimeoutError:
+                self.stop_client()
+                return False
+        except Exception as e:
+            logging.debug(f"Exception occurred during connection: {e}")
             self.stop_client()
             return False
 
@@ -53,6 +63,7 @@ class BluettiMQTTService:
             logging.debug(f"Failed to connect, return code {rc}")
 
     def on_message(self, client, userdata, message):
+        logging.info(f"Received message: {message.topic} {message.payload.decode()}")
         topic = message.topic
         payload = message.payload.decode()
 
@@ -81,7 +92,6 @@ class BluettiMQTTService:
     def start_broker(self):
         """Start the bluetti-mqtt broker as a subprocess."""
         command = [
-            "sudo",
             "bluetti-mqtt",
             "--broker",
             self.broker_host,

@@ -10,3 +10,4 @@ class SystemState(Enum):
     STOP_CHARGING = 5
     TURN_AC_ON = 6
     TURN_OFF = 7
+    TURN_DC_OFF = 8

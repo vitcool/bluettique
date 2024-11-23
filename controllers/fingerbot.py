@@ -33,8 +33,8 @@ class FingerBotController:
         while not connected:
             try:
                 connected = await fingerbot_service.connect()
-            except Exception:
-                logging.debug(f"{device_name}: Connection failed, retrying...")
+            except Exception as e:
+                logging.debug(f"{device_name}: Connection failed, retrying... Exception: {e}")
 
         logging.debug(f"{device_name}: Connected")
         fingerbot_service.press_button()
