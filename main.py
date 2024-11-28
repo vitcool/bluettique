@@ -14,6 +14,7 @@ async def main(tapo_controller, bluetti_controller, fingerbot_controller):
     setup_logging()
     
     logging.info("Starting services...")
+    print("Starting services...")
 
     await tapo_controller.initialize()
     await bluetti_controller.initialize()

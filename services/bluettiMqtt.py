@@ -10,7 +10,6 @@ class BluettiMQTTService:
     def __init__(self):
         self.broker_host = os.getenv("BLUETTI_BROKER_HOST")
         self.broker_port = os.getenv("BLUETTI_BROKER_PORT")
-        logging.debug(f"Connecting to MQTT broker at {self.broker_host}:{self.broker_port}")
         self.mac_address = os.getenv("BLUETTI_MAC_ADDRESS")
         self.device_name = os.getenv("BLUETTI_DEVICE_NAME")
         self.broker_interval = os.getenv("BLUETTI_BROKER_INTERVAL")
@@ -92,6 +91,7 @@ class BluettiMQTTService:
     def start_broker(self):
         """Start the bluetti-mqtt broker as a subprocess."""
         command = [
+            "sudo",
             "bluetti-mqtt",
             "--broker",
             self.broker_host,
