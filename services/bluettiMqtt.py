@@ -9,7 +9,6 @@ import paho.mqtt.client as mqtt
 class BluettiMQTTService:
     def __init__(self):
         self.broker_host = os.getenv("BLUETTI_BROKER_HOST")
-        self.broker_port = os.getenv("BLUETTI_BROKER_PORT")
         self.mac_address = os.getenv("BLUETTI_MAC_ADDRESS")
         self.device_name = os.getenv("BLUETTI_DEVICE_NAME")
         self.broker_interval = os.getenv("BLUETTI_BROKER_INTERVAL")
@@ -32,9 +31,8 @@ class BluettiMQTTService:
             self.start_broker()
             self.client.on_connect = self.on_connect
             self.client.on_message = self.on_message
-            self.client.enable_logger()
             try:
-                self.client.connect(self.broker_host, int(self.broker_port))
+                self.client.connect(self.broker_host)
             except Exception as e:
                 logging.error(f"MQTT connection failed: {e}")
             self.start_client()
@@ -62,7 +60,7 @@ class BluettiMQTTService:
             logging.debug(f"Failed to connect, return code {rc}")
 
     def on_message(self, client, userdata, message):
-        logging.info(f"Received message: {message.topic} {message.payload.decode()}")
+        # logging.info(f"Received message: {message.topic} {message.payload.decode()}")
         topic = message.topic
         payload = message.payload.decode()
 

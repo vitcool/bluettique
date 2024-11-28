@@ -3,7 +3,7 @@ import logging
 from services.bluettiMqtt import BluettiMQTTService
 from services.mosquitto import MosquittoService
 
-CONNECTION_RETRY_ATTEMPTS = 2
+CONNECTION_RETRY_ATTEMPTS = 5
 
 
 class BluettiController:

@@ -1,4 +1,4 @@
-asyncio-mqtt==0.16.2
+asyncio-mqtt==0.14.0
 black==24.8.0
 bleak==0.22.3
 bluetti-mqtt==0.15.0
