@@ -2,7 +2,7 @@ import asyncio
 import logging
 from services.bluettiMqtt import BluettiMQTTService
 
-CONNECTION_RETRY_ATTEMPTS = 5
+CONNECTION_RETRY_ATTEMPTS = 10
 
 
 class BluettiController:
@@ -24,7 +24,7 @@ class BluettiController:
             logging.info(
                 f"Retrying connection to BluettiMQTTService... (Attempt {attempt + 1})"
             )
-            await asyncio.sleep(5)
+            await asyncio.sleep(10)
         logging.info(
             f"Failed to connect to BluettiMQTTService after {CONNECTION_RETRY_ATTEMPTS} attempts."
         )
