@@ -89,7 +89,6 @@ class BluettiMQTTService:
     def start_broker(self):
         """Start the bluetti-mqtt broker as a subprocess."""
         command = [
-            "sudo",
             "bluetti-mqtt",
             "--broker",
             self.broker_host,

@@ -7,6 +7,7 @@ To be updated...
 - Installation
 - Environment Variables
 - Running the Project
+- Running with Docker Compose
 - Dependencies
 
 ## Installation
@@ -63,9 +64,20 @@ Make sure to replace `your_device_key`, `your_username`, and `your_password` wit
 
    `python main.py`
 
+## Running with Docker Compose
+
+1. Ensure Docker and Docker Compose are installed on your system.
+
+2. Build and start the containers in detached mode:
+
+   `docker-compose up -d --build`
+
+3. To stop the containers:
+
+   `docker-compose down`
+
 ## Dependencies
 
 All dependencies are listed in the `requirements.txt` file. To install them, use:
 
 `pip install -r requirements.txt`
-

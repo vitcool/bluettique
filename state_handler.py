@@ -79,7 +79,7 @@ async def handle_state(
         ):
             return SystemState.TURN_OFF
         
-        if (ac_output_on_bluetti and ac_output_power_bluetti > 0):
+        if (ac_output_on_bluetti and ac_output_power_bluetti > 0 and dc_output_on_bluetti):
             return SystemState.TURN_DC_OFF
 
         return SystemState.IDLE
