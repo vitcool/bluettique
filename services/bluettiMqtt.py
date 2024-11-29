@@ -32,7 +32,7 @@ class BluettiMQTTService:
             self.client.on_connect = self.on_connect
             self.client.on_message = self.on_message
             try:
-                self.client.connect(self.broker_host)
+                self.client.connect(self.broker_host, 1883, keepalive=60)
             except Exception as e:
                 logging.error(f"MQTT connection failed: {e}")
             self.start_client()
@@ -56,6 +56,7 @@ class BluettiMQTTService:
     def on_connect(self, client, userdata, flags, rc):
         if rc == 0:
             client.subscribe(self.subscribe_topic)
+            logging.debug(f"CONNECTED to {self.broker_host}")
         else:
             logging.debug(f"Failed to connect, return code {rc}")
 
