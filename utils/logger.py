@@ -20,14 +20,14 @@ def setup_logging():
     formatter = logging.Formatter(log_format)
     log_handler.setFormatter(formatter)
     
-    # Set the logging level
+    # Set the logging level for the handler
     log_handler.setLevel(logging.DEBUG if is_dev_env else logging.INFO)
     
+    # Get the root logger
+    root_logger = logging.getLogger()
+    
     # Add the handler to the root logger
-    logging.getLogger().addHandler(log_handler)
-
-    # Configure basic logging for other parts of the app
-    logging.basicConfig(
-        level=logging.DEBUG if is_dev_env else logging.INFO,
-        format=log_format
-    )
+    root_logger.addHandler(log_handler)
+    
+    # Set the logging level for the root logger
+    root_logger.setLevel(logging.DEBUG if is_dev_env else logging.INFO)
