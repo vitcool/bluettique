@@ -6,7 +6,8 @@ RUN apt-get update && apt-get install -y \
     bluetooth \
     libbluetooth-dev \
     dbus \
-    sudo
+    sudo \
+    tzdata
 
 # Set the working directory in the container
 WORKDIR /app
@@ -19,6 +20,9 @@ RUN python -m venv /venv
 
 # Activate the virtual environment by updating the PATH
 ENV PATH="/venv/bin:$PATH"
+
+# Set the timezone
+ENV TZ=Europe/Kyiv
 
 # Install any dependencies if needed (e.g., if requirements.txt exists)
 RUN pip install --no-cache-dir -r requirements.txt
