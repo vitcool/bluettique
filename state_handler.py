@@ -24,7 +24,7 @@ class StateHandler:
                 while not bluetti_controller.get_status().get("info_received"):
                     await asyncio.sleep(5)
 
-                return SystemState.CHECK_STATUS
+            return SystemState.CHECK_STATUS
 
         elif state == SystemState.IDLE:
             await asyncio.sleep(int(os.getenv("IDLE_INTERVAL")))
@@ -97,7 +97,7 @@ class StateHandler:
             if self.is_dev_env and bluetti_controller.dc_turned_on:
                 bluetti_controller.turn_dc("OFF")
 
-            if self.is_prod_env and bluetti_controller.ac_turned_on:
+            if bluetti_controller.ac_turned_on:
                 bluetti_controller.turn_ac("OFF")
 
             return SystemState.IDLE

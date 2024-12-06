@@ -2,7 +2,7 @@ import asyncio
 import logging
 from services.bluettiMqtt import BluettiMQTTService
 
-CONNECTION_RETRY_ATTEMPTS = 2
+CONNECTION_RETRY_ATTEMPTS = 3
 
 
 class BluettiController:

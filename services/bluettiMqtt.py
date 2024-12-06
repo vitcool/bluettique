@@ -61,7 +61,7 @@ class BluettiMQTTService:
             logging.debug(f"Failed to connect, return code {rc}")
 
     def on_message(self, client, userdata, message):
-        # logging.info(f"Received message: {message.topic} {message.payload.decode()}")
+        logging.info(f"Received message: {message.topic} {message.payload.decode()}")
         topic = message.topic
         payload = message.payload.decode()
 
