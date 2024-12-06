@@ -25,20 +25,27 @@ class BluettiMQTTService:
         self.status = BluettiStatus()
 
     async def connect(self):
-        if self.device_connected:
-            self.device_connected = False
-        self.start_broker()
-        self.client.on_connect = self.on_connect
-        self.client.on_message = self.on_message
-        self.client.connect(self.broker_host)
-        self.start_client()
         try:
-            await asyncio.wait_for(
-                self._wait_for_pairing(), timeout=int(self.broker_connection_timeout)
-            )
-            return True
-        except asyncio.TimeoutError:
-            self.stop_broker()
+            if self.device_connected:
+                self.device_connected = False
+            self.start_broker()
+            self.client.on_connect = self.on_connect
+            self.client.on_message = self.on_message
+            try:
+                self.client.connect(self.broker_host, 1883, keepalive=60)
+            except Exception as e:
+                logging.error(f"MQTT connection failed: {e}")
+            self.start_client()
+            try:
+                await asyncio.wait_for(
+                    self._wait_for_pairing(), timeout=int(self.broker_connection_timeout)
+                )
+                return True
+            except asyncio.TimeoutError:
+                self.stop_client()
+                return False
+        except Exception as e:
+            logging.debug(f"Exception occurred during connection: {e}")
             self.stop_client()
             return False
 
@@ -49,10 +56,12 @@ class BluettiMQTTService:
     def on_connect(self, client, userdata, flags, rc):
         if rc == 0:
             client.subscribe(self.subscribe_topic)
+            logging.debug(f"CONNECTED to {self.broker_host}")
         else:
             logging.debug(f"Failed to connect, return code {rc}")
 
     def on_message(self, client, userdata, message):
+        logging.info(f"Received message: {message.topic} {message.payload.decode()}")
         topic = message.topic
         payload = message.payload.decode()
 
@@ -81,7 +90,6 @@ class BluettiMQTTService:
     def start_broker(self):
         """Start the bluetti-mqtt broker as a subprocess."""
         command = [
-            "sudo",
             "bluetti-mqtt",
             "--broker",
             self.broker_host,

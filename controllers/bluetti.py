@@ -1,14 +1,12 @@
 import asyncio
 import logging
 from services.bluettiMqtt import BluettiMQTTService
-from services.mosquitto import MosquittoService
 
-CONNECTION_RETRY_ATTEMPTS = 2
+CONNECTION_RETRY_ATTEMPTS = 3
 
 
 class BluettiController:
     def __init__(self):
-        self.mosquitto = MosquittoService()
         self.bluetti = BluettiMQTTService()
         self.turned_on = False
         self.connection_set = False
@@ -16,7 +14,6 @@ class BluettiController:
         self.dc_turned_on = False
 
     async def initialize(self):
-        self.mosquitto.check()
         logging.info("BluettiController initialized.")
         for attempt in range(CONNECTION_RETRY_ATTEMPTS):
             if await self.bluetti.connect():
@@ -27,7 +24,7 @@ class BluettiController:
             logging.info(
                 f"Retrying connection to BluettiMQTTService... (Attempt {attempt + 1})"
             )
-            await asyncio.sleep(5)
+            await asyncio.sleep(10)
         logging.info(
             f"Failed to connect to BluettiMQTTService after {CONNECTION_RETRY_ATTEMPTS} attempts."
         )

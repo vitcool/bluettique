@@ -1,12 +1,22 @@
 # bluettique
 
-To be updated...
+Bluettique is a Python-based project designed to manage and control various smart devices, including Bluetti power stations, FingerBot devices, and Tapo smart plugs. The project integrates with these devices using Bluetooth and MQTT protocols, providing a seamless way to automate and monitor their operations.
+
+## Features
+
+- **Bluetti Power Station Control**: Connects to Bluetti power stations via MQTT to monitor and control AC/DC outputs, power status, and battery levels.
+- **FingerBot Automation**: Uses Bluetooth to connect and control FingerBot devices, allowing for automated button pressing and device pairing.
+- **Tapo Smart Plug Integration**: Manages Tapo smart plugs via the Tapo API, enabling remote control and status monitoring.
+- **State Management**: Implements a state handler to manage the different states of the system, ensuring smooth transitions and operations.
+- **Logging**: Provides detailed logging for debugging and monitoring purposes.
+
 
 ## Table of Contents
 
 - Installation
 - Environment Variables
 - Running the Project
+- Running with Docker Compose
 - Dependencies
 
 ## Installation
@@ -44,12 +54,33 @@ This project requires some environment variables to be set. These variables are 
 Create a `.env` file in the root of the project and add the following variables:
 
 ```
-DEVICE_KEY=your_device_key
-LOGIN_USER=your_username
-LOGIN_PASSWORD=your_password
+FINGERBOT_LOCAL_KEY_MAIN=
+FINGERBOT_MAC_MAIN=
+FINGERBOT_UUID_MAIN=
+FINGERBOT_DEV_ID_MAIN=
+
+FINGERBOT_LOCAL_KEY_ADD=
+FINGERBOT_MAC_ADD=
+FINGERBOT_UUID_ADD=
+FINGERBOT_DEV_ID_ADD=
+
+TAPO_USERNAME=
+TAPO_PASSWORD=
+TAPO_IP_ADDRESS=
+
+BLUETTI_BROKER_HOST=
+BLUETTI_BROKER_INTERVAL=
+BLUETTI_MAC_ADDRESS=
+BLUETTI_DEVICE_NAME=
+BLUETTI_BROKER_CONNECTION_TIMEOUT=
+
+IDLE_INTERVAL=
+LONG_IDLE_INTERVAL=
+
+ENV='dev' # 'prod'
 ```
 
-Make sure to replace `your_device_key`, `your_username`, and `your_password` with your actual credentials.
+Make sure to replace the placeholders with your actual credentials and settings.
 
 ## Running the Project
 
@@ -63,9 +94,20 @@ Make sure to replace `your_device_key`, `your_username`, and `your_password` wit
 
    `python main.py`
 
+## Running with Docker Compose
+
+1. Ensure Docker and Docker Compose are installed on your system.
+
+2. Build and start the containers in detached mode:
+
+   `docker-compose up -d --build`
+
+3. To stop the containers:
+
+   `docker-compose down`
+
 ## Dependencies
 
 All dependencies are listed in the `requirements.txt` file. To install them, use:
 
 `pip install -r requirements.txt`
-

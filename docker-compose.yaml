@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  python-app:
+    build: .
+    container_name: python-app
+    ports:
+      - "5000:5000"  # Main app port
+    privileged: true  # Required for accessing host devices
+    devices:
+      - /dev/ttyAMA0:/dev/ttyAMA0  # Allow access to USB devices (Bluetooth adapter)
+      - /var/run/dbus:/var/run/dbus
+    network_mode: "host"  # Allows direct communication with the host's Bluetooth stack
+    volumes:
+      - ./logs:/app/logs  # Mount local logs directory
+      - /run/dbus/system_bus_socket:/host/run/dbus/system_bus_socket:ro # Mount host's D-Bus socket
+      - /var/lib/bluetooth:/var/lib/bluetooth # Mount host's Bluetooth data
+      - /sys/class/bluetooth:/sys/class/bluetooth # Mount host's Bluetooth data
+      - /dev:/dev # Allow access to USB devices (Bluetooth adapter)
+    environment:
+      - DBUS_SYSTEM_BUS_ADDRESS=unix:path=/host/run/dbus/system_bus_socket
+    restart: unless-stopped
+    command: >
+      sh -c "
+      python main.py &
+      python3 -m http.server 8080 --directory logs &
+      wait
+      "
+    depends_on:
+      - mosquitto
+
+  mosquitto:
+    image: eclipse-mosquitto
+    container_name: mosquitto
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_config:/mosquitto/config
+
+volumes:
+  mosquitto_data:
+  mosquitto_config:
