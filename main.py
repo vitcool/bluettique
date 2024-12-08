@@ -9,7 +9,6 @@ from controllers.bluetti import BluettiController
 from state_handler import SystemState, StateHandler
 from utils.logger import setup_logging
 
-
 async def main(tapo_controller, bluetti_controller, fingerbot_controller):
     setup_logging()
     
@@ -32,11 +31,10 @@ async def main(tapo_controller, bluetti_controller, fingerbot_controller):
 
     state_handler = StateHandler()
 
-    current_state = SystemState.INITIAL_CHECK
 
     while True:
-        current_state = await state_handler.handle_state(
-            current_state, tapo_controller, bluetti_controller, fingerbot_controller
+        await state_handler.handle_state(
+            tapo_controller, bluetti_controller, fingerbot_controller
         )
         await asyncio.sleep(1)
 
