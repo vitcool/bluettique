@@ -34,17 +34,3 @@ class ScheduleManager:
                 time.sleep(3600)  # Update every hour
 
         threading.Thread(target=update_loop, daemon=True).start()
-
-
-
-
-
-
-
-
-
-
-
-
-
-

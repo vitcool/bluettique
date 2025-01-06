@@ -43,7 +43,8 @@ def fetch_electricity_outages(fetch_function=requests.get):
     except KeyError as e:
         print(f"Key error while processing data: {e}")
         return []
-    
+
+# used for testing
 def mock_fetch_function(url):
     class MockResponse:
         def raise_for_status(self):
@@ -60,7 +61,7 @@ def mock_fetch_function(url):
                             "kiev": {
                                 "today": {
                                     "groups": {
-                                        "1": [
+                                        "1.2": [
                                             {"start": 6, "end": 7, "type": "DEFINITE_OUTAGE"},
                                             {"start": 7, "end": 8, "type": "DEFINITE_OUTAGE"},
                                             {"start": 11, "end": 13, "type": "DEFINITE_OUTAGE"},

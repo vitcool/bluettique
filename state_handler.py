@@ -91,6 +91,9 @@ class CheckStatusState(State):
         if ac_output_on_bluetti and ac_output_power_bluetti > 0 and dc_output_on_bluetti:
             next_state = TurnDcOffState()
             
+        if is_tapo_online and total_battery_percent_bluetti == 100 and not ac_output_on_bluetti:
+            next_state = TurnOffState()
+            
         logging.info(f"Next state: {next_state}")
         handler.set_state(next_state)
 
