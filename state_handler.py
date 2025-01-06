@@ -84,7 +84,7 @@ class CheckStatusState(State):
         if not is_tapo_online and not ac_output_on_bluetti and not dc_output_on_bluetti and not handler.is_turned_off_because_unused:
             next_state = TurnAcOnState()
 
-        if bluetti_controller.turned_on and ac_output_power_bluetti == 0 and dc_output_power_bluetti <= 10 and not is_tapo_charing:
+        if bluetti_controller.turned_on and ac_output_power_bluetti == 0 and dc_output_power_bluetti <= 10 and not is_tapo_online:
             handler.is_turned_off_because_unused = True
             next_state = TurnOffState()
 

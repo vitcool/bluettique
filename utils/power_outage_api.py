@@ -27,7 +27,7 @@ def fetch_electricity_outages(fetch_function=requests.get):
                     .get("kiev", {})
                     .get("today", {})
                     .get("groups", {})
-                    .get("1", [])
+                    .get("1.2", [])
                 )
                 result = [
                     entry for entry in outages if entry.get("type") == "DEFINITE_OUTAGE"
