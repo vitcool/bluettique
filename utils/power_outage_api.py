@@ -1,7 +1,9 @@
+import os
 import requests
 import json
 import logging
 
+group_name = os.getenv("SCHEDULE_GROUP_NAME", "1.2")
 
 def fetch_electricity_outages(fetch_function=requests.get):
     url = "https://api.yasno.com.ua/api/v1/pages/home/schedule-turn-off-electricity"
@@ -14,7 +16,7 @@ def fetch_electricity_outages(fetch_function=requests.get):
         # Parse the JSON response
         data = response.json()
 
-        # Extract the first group ("1") and filter for "DEFINITE_OUTAGE"
+        # Extract the group by group_name and filter for "DEFINITE_OUTAGE"
         result = []
         for component in data.get("components", []):
             if component.get(
@@ -27,7 +29,7 @@ def fetch_electricity_outages(fetch_function=requests.get):
                     .get("kiev", {})
                     .get("today", {})
                     .get("groups", {})
-                    .get("1.2", [])
+                    .get(group_name, [])
                 )
                 result = [
                     entry for entry in outages if entry.get("type") == "DEFINITE_OUTAGE"
@@ -61,7 +63,7 @@ def mock_fetch_function(url):
                             "kiev": {
                                 "today": {
                                     "groups": {
-                                        "1.2": [
+                                        group_name: [
                                             {"start": 6, "end": 7, "type": "DEFINITE_OUTAGE"},
                                             {"start": 7, "end": 8, "type": "DEFINITE_OUTAGE"},
                                             {"start": 11, "end": 13, "type": "DEFINITE_OUTAGE"},
