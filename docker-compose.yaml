@@ -4,6 +4,7 @@ services:
     container_name: python-app
     ports:
       - "5000:5000"  # Main app port
+      - "8080:8080"  # Logs HTTP server port
     privileged: true  # Required for accessing host devices
     devices:
       - /dev/ttyAMA0:/dev/ttyAMA0  # Allow access to USB devices (Bluetooth adapter)
@@ -21,7 +22,7 @@ services:
     command: >
       sh -c "
       python main.py &
-      python3 -m http.server 8080 --directory logs &
+      python3 -m http.server 8080 --bind 0.0.0.0 --directory logs &
       wait
       "
     depends_on:
