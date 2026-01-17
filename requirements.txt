@@ -16,7 +16,6 @@ platformdirs==4.3.6
 psutil==6.1.0
 python-dotenv==1.0.1
 PyYAML==6.0.2
-requests==2.32.3
 shellescape==3.8.1
 tapo==0.5.1
 typing_extensions==4.12.2

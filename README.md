@@ -77,8 +77,6 @@ IDLE_INTERVAL=
 LONG_IDLE_INTERVAL=
 
 ENV='dev' # 'prod'
-
-SCHEDULE_GROUP_NAME = # group name according to the schedule
 ```
 
 Make sure to replace the placeholders with your actual credentials and settings.
