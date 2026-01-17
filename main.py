@@ -3,14 +3,13 @@ import signal
 import logging
 import os
 from dotenv import load_dotenv
-from controllers.fingerbot import FingerBotController
 from controllers.tapo import TapoController
 from controllers.bluetti import BluettiController
 from state_handler import StateHandler
 from utils.logger import setup_logging
 from services.schedule_manager import ScheduleManager
 
-async def main(tapo_controller, bluetti_controller, fingerbot_controller):
+async def main(tapo_controller, bluetti_controller):
     setup_logging()
     
     logging.info("Starting services...")
@@ -38,11 +37,11 @@ async def main(tapo_controller, bluetti_controller, fingerbot_controller):
 
     while True:
         await state_handler.handle_state(
-            tapo_controller, bluetti_controller, fingerbot_controller, schedule_manager
+            tapo_controller, bluetti_controller, schedule_manager
         )
         await asyncio.sleep(1)
 
 
 load_dotenv()
 
-asyncio.run(main(TapoController(), BluettiController(), FingerBotController()))
+asyncio.run(main(TapoController(), BluettiController()))

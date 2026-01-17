@@ -1,11 +1,10 @@
 # bluettique
 
-Bluettique is a Python-based project designed to manage and control various smart devices, including Bluetti power stations, FingerBot devices, and Tapo smart plugs. The project integrates with these devices using Bluetooth and MQTT protocols, providing a seamless way to automate and monitor their operations.
+Bluettique is a Python-based project designed to manage and control various smart devices, including Bluetti power stations and Tapo smart plugs. The project integrates with these devices using MQTT and device APIs, providing a seamless way to automate and monitor their operations.
 
 ## Features
 
 - **Bluetti Power Station Control**: Connects to Bluetti power stations via MQTT to monitor and control AC/DC outputs, power status, and battery levels.
-- **FingerBot Automation**: Uses Bluetooth to connect and control FingerBot devices, allowing for automated button pressing and device pairing.
 - **Tapo Smart Plug Integration**: Manages Tapo smart plugs via the Tapo API, enabling remote control and status monitoring.
 - **State Management**: Implements a state handler to manage the different states of the system, ensuring smooth transitions and operations.
 - **Logging**: Provides detailed logging for debugging and monitoring purposes.
