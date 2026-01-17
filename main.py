@@ -15,6 +15,13 @@ async def main(tapo_controller, bluetti_controller):
     print("Starting services...")
 
     await tapo_controller.initialize()
+    # await tapo_controller.start_charging()
+    # await tapo_controller.get_status()
+    # await tapo_controller.stop_charging()
+    # await tapo_controller.get_status()
+    # above works fine ;)
+    
+    logging.info(f"Tapo status after start_charging: {tapo_controller.status.get_status()}")
     # await bluetti_controller.initialize()
 
     def handle_stop_signal(signum, frame):

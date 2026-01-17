@@ -17,6 +17,6 @@ psutil==6.1.0
 python-dotenv==1.0.1
 PyYAML==6.0.2
 shellescape==3.8.1
-tapo==0.5.1
+tapo==0.8.8
 typing_extensions==4.12.2
 urllib3==2.2.3
