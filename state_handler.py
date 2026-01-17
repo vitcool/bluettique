@@ -5,11 +5,11 @@ import psutil
 import datetime
 
 class State:
-    async def handle(self, handler, tapo_controller, bluetti_controller, schedule_manager):
+    async def handle(self, handler, tapo_controller, bluetti_controller):
         raise NotImplementedError
 
 class InitialCheckState(State):
-    async def handle(self, handler, tapo_controller, bluetti_controller, schedule_manager):
+    async def handle(self, handler, tapo_controller, bluetti_controller):
         logging.info("Handle INITIAL_CHECK state")
         if not bluetti_controller.connection_set:
             await bluetti_controller.initialize()
@@ -18,23 +18,11 @@ class InitialCheckState(State):
         handler.set_state(CheckStatusState())
 
 class IdleState(State):
-    async def handle(self, handler, tapo_controller, bluetti_controller, schedule_manager):
-        outage_expected = schedule_manager.is_outage_expected()
-        delay = 0
-        
-        if (outage_expected and not bluetti_controller.ac_turned_on):
-            delay = handler.idle_interval
-            
-        if (not outage_expected or bluetti_controller.ac_turned_on):
-            current_time = datetime.datetime.now()
-            time_to_end_of_hour = (60 - current_time.minute) * 60 - current_time.second
-            
-            if time_to_end_of_hour < handler.long_idle_interval:
-                delay = time_to_end_of_hour
-            else:
-                delay = handler.long_idle_interval
-                
-        logging.info(f"Handle IDLE state: outage_expected: {outage_expected}, bluetti_controller.ac_turned_on: {bluetti_controller.ac_turned_on}, delay: {delay}s")
+    async def handle(self, handler, tapo_controller, bluetti_controller):
+        delay = handler.long_idle_interval
+        logging.info(
+            f"Handle IDLE state (no schedule): bluetti_controller.ac_turned_on: {bluetti_controller.ac_turned_on}, delay: {delay}s"
+        )
 
         await asyncio.sleep(delay)
             
@@ -43,7 +31,7 @@ class IdleState(State):
         handler.set_state(CheckStatusState())
 
 class CheckStatusState(State):
-    async def handle(self, handler, tapo_controller, bluetti_controller, schedule_manager):
+    async def handle(self, handler, tapo_controller, bluetti_controller):
         logging.info("Handle CHECK_STATUS state")
         await tapo_controller.get_status()
         tapo_status = tapo_controller.status.get_status()
@@ -97,7 +85,7 @@ class CheckStatusState(State):
         handler.set_state(next_state)
 
 class StartChargingState(State):
-    async def handle(self, handler, tapo_controller, bluetti_controller, schedule_manager):
+    async def handle(self, handler, tapo_controller, bluetti_controller):
         logging.info("Handle START_CHARGING state")
         await tapo_controller.start_charging()
         if handler.is_dev_env and bluetti_controller.dc_turned_on:
@@ -107,19 +95,19 @@ class StartChargingState(State):
         handler.set_state(IdleState())
 
 class StopChargingState(State):
-    async def handle(self, handler, tapo_controller, bluetti_controller, schedule_manager):
+    async def handle(self, handler, tapo_controller, bluetti_controller):
         logging.info("Handle STOP_CHARGING state")
         await tapo_controller.stop_charging()
         handler.set_state(TurnOffState())
 
 class TurnOffState(State):
-    async def handle(self, handler, tapo_controller, bluetti_controller, schedule_manager):
+    async def handle(self, handler, tapo_controller, bluetti_controller):
         logging.info("Handle TURN_OFF state")
         bluetti_controller.power_off()
         handler.set_state(IdleState())
 
 class TurnAcOnState(State):
-    async def handle(self, handler, tapo_controller, bluetti_controller, schedule_manager):
+    async def handle(self, handler, tapo_controller, bluetti_controller):
         logging.info("Handle TURN_AC_ON state")
         handler.is_turned_off_because_unused = False
         if not bluetti_controller.turned_on or not bluetti_controller.connection_set:
@@ -134,7 +122,7 @@ class TurnAcOnState(State):
         handler.set_state(IdleState())
 
 class TurnDcOffState(State):
-    async def handle(self, handler, tapo_controller, bluetti_controller, schedule_manager):
+    async def handle(self, handler, tapo_controller, bluetti_controller):
         logging.info("Handle TURN_DC_OFF state")
         bluetti_controller.turn_dc("OFF")
         handler.set_state(IdleState())
@@ -151,5 +139,5 @@ class StateHandler:
     def set_state(self, state):
         self.state = state
 
-    async def handle_state(self, tapo_controller, bluetti_controller, schedule_manager):
-        await self.state.handle(self, tapo_controller, bluetti_controller, schedule_manager)
+    async def handle_state(self, tapo_controller, bluetti_controller):
+        await self.state.handle(self, tapo_controller, bluetti_controller)

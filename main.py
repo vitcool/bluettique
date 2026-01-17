@@ -5,9 +5,8 @@ import os
 from dotenv import load_dotenv
 from controllers.tapo import TapoController
 from controllers.bluetti import BluettiController
-from state_handler import StateHandler
 from utils.logger import setup_logging
-from services.schedule_manager import ScheduleManager
+from state_handler import StateHandler
 
 async def main(tapo_controller, bluetti_controller):
     setup_logging()
@@ -16,7 +15,7 @@ async def main(tapo_controller, bluetti_controller):
     print("Starting services...")
 
     await tapo_controller.initialize()
-    await bluetti_controller.initialize()
+    # await bluetti_controller.initialize()
 
     def handle_stop_signal(signum, frame):
         logging.info("Stop signal received, performing cleanup...")
@@ -29,17 +28,13 @@ async def main(tapo_controller, bluetti_controller):
     signal.signal(signal.SIGTERM, handle_stop_signal)
     signal.signal(signal.SIGINT, handle_stop_signal)
 
-    state_handler = StateHandler()
-    
-    schedule_manager = ScheduleManager()
-    schedule_manager.start_periodic_updates()
-    logging.info(f"is outage expected: {schedule_manager.is_outage_expected()}")
-
-    while True:
-        await state_handler.handle_state(
-            tapo_controller, bluetti_controller, schedule_manager
-        )
-        await asyncio.sleep(1)
+    # state_handler = StateHandler()
+    # For now skip the state machine; focus on Tapo connectivity.
+    # while True:
+    #     await state_handler.handle_state(
+    #         tapo_controller, bluetti_controller
+    #     )
+    #     await asyncio.sleep(1)
 
 
 load_dotenv()
