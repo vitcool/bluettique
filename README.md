@@ -99,11 +99,11 @@ Make sure to replace the placeholders with your actual credentials and settings.
 
 2. Build and start the containers in detached mode:
 
-   `docker-compose up -d --build`
+   `docker compose up -d --build`
 
 3. To stop the containers:
 
-   `docker-compose down`
+   `docker compose down`
 
 ## Dependencies
 
