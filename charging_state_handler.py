@@ -13,15 +13,29 @@ class ChargingState:
 
 class WaitPowerState(ChargingState):
     async def handle(self, handler: "ChargingStateHandler"):
-        logging.info("Charging: WAIT_POWER - ensuring TAPO reachable")
+        logging.info("Charging: WAIT_POWER - waiting for TAPO offline->online cycle")
         try:
-            await handler.tapo_controller.initialize()
+            await handler.tapo_controller.get_status()
+            tapo_status = handler.tapo_controller.status.get_status()
+            is_online = tapo_status.get("online")
+        except Exception:
+            logging.warning("Charging: TAPO status refresh failed; treating as offline", exc_info=True)
+            is_online = False
+
+        if not is_online:
+            handler.offline_seen_in_wait = True
+            logging.info("Charging: TAPO offline; waiting to come online")
+            await asyncio.sleep(handler.config.check_interval_sec)
+            return
+
+        if handler.offline_seen_in_wait:
             handler.low_power_counter = 0
             handler.stable_checks_remaining = handler.config.stable_power_checks
-            handler.set_state(StartChargingState(), "TAPO reachable")
-        except Exception:
-            logging.warning("Charging: TAPO unreachable, retrying after backoff", exc_info=True)
-            await asyncio.sleep(handler.config.check_interval_sec)
+            handler.set_state(StartChargingState(), "TAPO back online after offline")
+            return
+
+        logging.info("Charging: TAPO online but no offline event observed yet; staying in WAIT_POWER")
+        await asyncio.sleep(handler.config.check_interval_sec)
 
 
 class StartChargingState(ChargingState):
@@ -203,6 +217,7 @@ class ChargingStateHandler:
         self.socket_on_at: Optional[float] = None
         self.first_power_check_at: Optional[float] = None
         self.stable_checks_remaining = self.config.stable_power_checks
+        self.offline_seen_in_wait = False
 
     def set_state(self, state: ChargingState, reason: str | None = None):
         logging.info(
@@ -212,6 +227,9 @@ class ChargingStateHandler:
             f" ({reason})" if reason else "",
         )
         self.state = state
+        if isinstance(state, WaitPowerState):
+            # Require a fresh offline->online observation each time we re-enter WAIT_POWER
+            self.offline_seen_in_wait = False
 
     async def handle_state(self):
         await self.state.handle(self)

@@ -24,6 +24,9 @@ class TapoController:
             self.status.set_charging(device_info.device_on)
         except Exception:
             self.status.reset()
+            # Force a fresh login next time after auth/network failures
+            self.tapo.initialized = False
+            self.tapo.device = None
             logging.debug("TAPO: Failed to get status")
 
     async def start_charging(self):
@@ -44,5 +47,8 @@ class TapoController:
             logging.info(f"TAPO: Current power usage: {power}W")
             return power
         except Exception:
+            # Reset session so we re-login after a 403/offline event
+            self.tapo.initialized = False
+            self.tapo.device = None
             logging.debug("TAPO: Failed to get current power")
             raise
