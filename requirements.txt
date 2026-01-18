@@ -14,6 +14,7 @@ paho-mqtt==1.6.1
 pathspec==0.12.1
 platformdirs==4.3.6
 psutil==6.1.0
+pytest==8.3.3
 python-dotenv==1.0.1
 PyYAML==6.0.2
 shellescape==3.8.1

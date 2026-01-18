@@ -66,6 +66,18 @@ FINGERBOT_DEV_ID_ADD=
 TAPO_USERNAME=
 TAPO_PASSWORD=
 TAPO_IP_ADDRESS=
+CHARGING_SOCKET_DEVICE_ID=  # optional; overrides TAPO_IP_ADDRESS for the charger plug
+CHARGING_W_THRESHOLD=20
+LOW_POWER_CONSECUTIVE_COUNT=3
+CHECK_INTERVAL_SEC=900
+STARTUP_GRACE_SEC=90
+MIN_ON_TIME_SEC=1200
+STABLE_POWER_CHECKS=2
+STABLE_POWER_INTERVAL_SEC=60
+RECHECK_CYCLE_ENABLED=true
+RECHECK_OFF_SEC=90
+RECHECK_QUICK_CHECKS=3
+RECHECK_QUICK_INTERVAL_SEC=20
 
 BLUETTI_BROKER_HOST=
 BLUETTI_BROKER_INTERVAL=
@@ -92,6 +104,14 @@ Make sure to replace the placeholders with your actual credentials and settings.
 2. Run the application:
 
    `python main.py`
+
+## Charging flow behavior
+
+- On startup the app pairs with the configured Tapo P110 (`CHARGING_SOCKET_DEVICE_ID` or `TAPO_IP_ADDRESS`) and turns the socket on.
+- A charging supervisor monitors instantaneous power to decide whether charging is active (`power >= CHARGING_W_THRESHOLD`).
+- After a startup grace period and minimum on-time, sustained low power (`LOW_POWER_CONSECUTIVE_COUNT`) triggers a recheck cycle; if low power persists the socket is turned off.
+- Periodic checks are spaced by `CHECK_INTERVAL_SEC`; quick rechecks use `RECHECK_QUICK_*` settings. Stable power confirmation uses `STABLE_POWER_*`.
+- All state transitions and power checks are logged for observability; failures drop back to the wait state and retry.
 
 ## Running with Docker Compose
 

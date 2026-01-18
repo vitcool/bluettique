@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from controllers.tapo import TapoController
 from controllers.bluetti import BluettiController
 from utils.logger import setup_logging
-from state_handler import StateHandler
+from charging_state_handler import ChargingStateHandler
 
 async def main(tapo_controller, bluetti_controller):
     setup_logging()
@@ -14,20 +14,7 @@ async def main(tapo_controller, bluetti_controller):
     logging.info("Starting services...")
     print("Starting services...")
 
-    await tapo_controller.initialize()
-    await tapo_controller.start_charging()
-    await asyncio.sleep(10)
-    current_power = await tapo_controller.get_current_power()
-    logging.info(f"Tapo current power: {current_power}")
-    await tapo_controller.stop_charging()
-    
-    # await tapo_controller.get_status()
-    # await tapo_controller.stop_charging()
-    # await tapo_controller.get_status()
-    # above works fine ;)
-    
-    logging.info(f"Tapo status after start_charging: {tapo_controller.status.get_status()}")
-    # await bluetti_controller.initialize()
+    charging_handler = ChargingStateHandler(tapo_controller)
 
     def handle_stop_signal(signum, frame):
         logging.info("Stop signal received, performing cleanup...")
@@ -40,13 +27,8 @@ async def main(tapo_controller, bluetti_controller):
     signal.signal(signal.SIGTERM, handle_stop_signal)
     signal.signal(signal.SIGINT, handle_stop_signal)
 
-    # state_handler = StateHandler()
-    # For now skip the state machine; focus on Tapo connectivity.
-    # while True:
-    #     await state_handler.handle_state(
-    #         tapo_controller, bluetti_controller
-    #     )
-    #     await asyncio.sleep(1)
+    while True:
+        await charging_handler.handle_state()
 
 
 load_dotenv()
