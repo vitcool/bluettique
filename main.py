@@ -15,7 +15,12 @@ async def main(tapo_controller, bluetti_controller):
     print("Starting services...")
 
     await tapo_controller.initialize()
-    # await tapo_controller.start_charging()
+    await tapo_controller.start_charging()
+    await asyncio.sleep(10)
+    current_power = await tapo_controller.get_current_power()
+    logging.info(f"Tapo current power: {current_power}")
+    await tapo_controller.stop_charging()
+    
     # await tapo_controller.get_status()
     # await tapo_controller.stop_charging()
     # await tapo_controller.get_status()

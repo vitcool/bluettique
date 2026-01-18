@@ -33,3 +33,14 @@ class TapoController:
     async def stop_charging(self):
         await self.tapo.turn_off()
         await self.tapo.get_state()
+
+    async def get_current_power(self):
+        """Fetch the current power draw from the TAPO device."""
+        try:
+            await self.tapo.initialize()
+            power = await self.tapo.get_current_power()
+            logging.info(f"TAPO: Current power usage: {power}")
+            return power
+        except Exception:
+            logging.debug("TAPO: Failed to get current power")
+            raise

@@ -37,3 +37,7 @@ class TapoService:
 
     async def get_state(self):
         return await self.device.get_device_info()
+
+    async def get_current_power(self):
+        logging.info("TAPO: Fetching current power usage...")
+        return await self.device.get_current_power()
