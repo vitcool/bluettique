@@ -61,9 +61,14 @@ class MonitorChargingState(ChargingState):
         try:
             power = await handler.tapo_controller.get_current_power()
         except Exception:
-            logging.warning("Charging: Failed to read power, going back to WAIT_POWER", exc_info=True)
-            handler.set_state(WaitPowerState(), "Power read failed")
-            return
+            logging.warning("Charging: Power read failed; reinitializing and retrying", exc_info=True)
+            try:
+                await handler.tapo_controller.initialize()
+                power = await handler.tapo_controller.get_current_power()
+            except Exception:
+                logging.warning("Charging: Retry power read failed, returning to WAIT_POWER", exc_info=True)
+                handler.set_state(WaitPowerState(), "Power read failed after retry")
+                return
 
         is_charging = handler.supervisor.is_charging(power)
 
