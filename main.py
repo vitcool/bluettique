@@ -3,22 +3,33 @@ import signal
 import logging
 import os
 from dotenv import load_dotenv
-from controllers.tapo import TapoController
 from controllers.bluetti import BluettiController
+from controllers.tapo import TapoController
 from utils.logger import setup_logging
 from charging_state_handler import ChargingStateHandler
 
+async def test_bluetti_dc_cycle(bluetti_controller: BluettiController):
+    """Initialize Bluetti, turn DC on, wait, then power off for manual verification."""
+    await bluetti_controller.initialize()
+    if not bluetti_controller.connection_set:
+        logging.info("Bluetti connection failed; skipping DC cycle test.")
+        return
+
+    logging.info("Turning Bluetti DC output ON for 10 seconds...")
+    bluetti_controller.turn_dc("ON")
+    await asyncio.sleep(10)
+    logging.info("Powering off Bluetti after DC cycle.")
+    bluetti_controller.power_off()
+
+
 async def main(tapo_controller, bluetti_controller):
     setup_logging()
-    
-    logging.info("Starting services...")
-    print("Starting services...")
 
-    charging_handler = ChargingStateHandler(tapo_controller)
+    logging.info("Starting Bluetti DC cycle test...")
+    print("Starting Bluetti DC cycle test...")
 
     def handle_stop_signal(signum, frame):
         logging.info("Stop signal received, performing cleanup...")
-        # Perform your cleanup logic here, e.g., stop services
         bluetti_controller.stop()
         logging.info("Cleanup complete, exiting.")
         exit(0)
@@ -27,8 +38,12 @@ async def main(tapo_controller, bluetti_controller):
     signal.signal(signal.SIGTERM, handle_stop_signal)
     signal.signal(signal.SIGINT, handle_stop_signal)
 
-    while True:
-        await charging_handler.handle_state()
+    await test_bluetti_dc_cycle(bluetti_controller)
+
+    # Original state machine loop commented out for Bluetti testing
+    # charging_handler = ChargingStateHandler(tapo_controller)
+    # while True:
+    #     await charging_handler.handle_state()
 
 
 load_dotenv()
