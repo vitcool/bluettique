@@ -10,26 +10,28 @@ import paho.mqtt.client as mqtt
 
 class BluettiMQTTService:
     def __init__(self):
-        self.broker_host = os.getenv("BLUETTI_BROKER_HOST")
+        self.broker_host = os.getenv("BLUETTI_BROKER_HOST", "localhost")
         self.mac_address = os.getenv("BLUETTI_MAC_ADDRESS")
         self.device_name = os.getenv("BLUETTI_DEVICE_NAME")
-        self.broker_interval = os.getenv("BLUETTI_BROKER_INTERVAL")
+        self.broker_interval = os.getenv("BLUETTI_BROKER_INTERVAL", "30")
         self.broker_connection_timeout = max(
-            int(os.getenv("BLUETTI_BROKER_CONNECTION_TIMEOUT", "60")), 30
+            int(os.getenv("BLUETTI_BROKER_CONNECTION_TIMEOUT", "90")), 90
         )
         self.broker_adapter = os.getenv("BLUETTI_BROKER_ADAPTER")
         self.client = mqtt.Client()
 
         # Subscribe to necessary topics
-        self.subscribe_topic = f"bluetti/state/{self.device_name}/#"
-        self.dc_command_topic = f"bluetti/command/{self.device_name}/dc_output_on"
-        self.ac_command_topic = f"bluetti/command/{self.device_name}/ac_output_on"
-        self.power_off_topic = f"bluetti/command/{self.device_name}/power_off"
+        # Subscribe to all devices so we still see updates if the configured
+        # device name is wrong/missing; we filter in on_message.
+        self.subscribe_topic = "bluetti/state/#"
 
         self.device_connected = False
         self.status = BluettiStatus()
 
     async def connect(self):
+        if not self._validate_config():
+            return False
+        self._log_config()
         try:
             if self.device_connected:
                 self.device_connected = False
@@ -65,6 +67,7 @@ class BluettiMQTTService:
 
     def on_connect(self, client, userdata, flags, rc):
         if rc == 0:
+            logging.debug(f"MQTT connected to {self.broker_host}; subscribing to {self.subscribe_topic}")
             client.subscribe(self.subscribe_topic)
             logging.debug(f"CONNECTED to {self.broker_host}")
         else:
@@ -74,6 +77,15 @@ class BluettiMQTTService:
         logging.info(f"Received message: {message.topic} {message.payload.decode()}")
         topic = message.topic
         payload = message.payload.decode()
+
+        topic_parts = topic.split("/")
+        device_from_topic = topic_parts[2] if len(topic_parts) > 2 else None
+        if self.device_name and device_from_topic and device_from_topic != self.device_name:
+            logging.debug(f"Ignoring state for unexpected device '{device_from_topic}' (expecting '{self.device_name}')")
+            return
+        if not self.device_name and device_from_topic:
+            self.device_name = device_from_topic
+            logging.info(f"Detected Bluetti device name from topic: {self.device_name}")
 
         if not self.device_connected:
             self.device_connected = True
@@ -118,8 +130,12 @@ class BluettiMQTTService:
             self.mac_address,
         ]
         if self.broker_adapter:
-            command.extend(["--adapter", self.broker_adapter])
+            logging.warning(
+                "BLUETTI_BROKER_ADAPTER is set (%s) but installed bluetti-mqtt does not support --adapter; using default adapter.",
+                self.broker_adapter,
+            )
         try:
+            logging.debug(f"Starting bluetti-mqtt with command: {' '.join(command)}")
             self.broker_process = subprocess.Popen(
                 command,
                 stdout=subprocess.PIPE,
@@ -184,7 +200,10 @@ class BluettiMQTTService:
     def set_ac_output(self, state: str):
         """Turn AC output ON/OFF"""
         if state in ["ON", "OFF"]:
-            self.client.publish(self.ac_command_topic, state)
+            topic = self._command_topic("ac_output_on")
+            if not topic:
+                return
+            self.client.publish(topic, state)
             self.ac_output_on = state == "ON"
         else:
             logging.debug("Invalid state for AC output")
@@ -192,9 +211,49 @@ class BluettiMQTTService:
     def set_dc_output(self, state: str):
         """Turn DC output ON/OFF"""
         if state in ["ON", "OFF"]:
-            self.client.publish(self.dc_command_topic, state)
+            topic = self._command_topic("dc_output_on")
+            if not topic:
+                return
+            self.client.publish(topic, state)
         else:
             logging.debug("Invalid state for DC output")
 
     def power_off(self):
-        self.client.publish(self.power_off_topic, "ON")
+        topic = self._command_topic("power_off")
+        if topic:
+            self.client.publish(topic, "ON")
+
+    def _validate_config(self) -> bool:
+        """Validate required configuration before trying to connect."""
+        missing = []
+        if not self.mac_address:
+            missing.append("BLUETTI_MAC_ADDRESS")
+        if not self.device_name:
+            logging.info("BLUETTI_DEVICE_NAME not set; will auto-detect from MQTT topics.")
+        if not self.broker_interval:
+            missing.append("BLUETTI_BROKER_INTERVAL")
+        if not self.broker_host:
+            missing.append("BLUETTI_BROKER_HOST")
+        if missing:
+            logging.error(f"Missing required Bluetti config values: {', '.join(missing)}")
+            return False
+        return True
+
+    def _command_topic(self, command_suffix: str) -> str | None:
+        """Build a command topic; return None if the device name is unknown."""
+        if not self.device_name:
+            logging.error("Cannot publish command because BLUETTI_DEVICE_NAME is not set and has not been auto-detected yet.")
+            return None
+        return f"bluetti/command/{self.device_name}/{command_suffix}"
+
+    def _log_config(self):
+        """Log active configuration for easier debugging."""
+        logging.debug(
+            "Bluetti MQTT config: host=%s interval=%ss timeout=%ss mac=%s adapter=%s device_name=%s",
+            self.broker_host,
+            self.broker_interval,
+            self.broker_connection_timeout,
+            self.mac_address,
+            self.broker_adapter or "default",
+            self.device_name or "auto-detect",
+        )
