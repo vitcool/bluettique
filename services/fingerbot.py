@@ -1,6 +1,7 @@
 # initial code is taken from https://github.com/redphx/poc-tuya-ble-fingerbot
 
 import time
+import logging
 import pygatt
 import hashlib
 import secrets
@@ -308,16 +309,21 @@ class FingerBotService:
 
     async def connect(self):
         try:
+            logging.info("FingerBotService %s: starting adapter", self.mac)
             self.adapter.start()
             self.device = self.adapter.connect(
                 self.mac, address_type=pygatt.BLEAddressType.public, timeout=10
             )
+            logging.info("FingerBotService %s: connected, subscribing to notifications", self.mac)
             self.device.subscribe(self.NOTIF_UUID, callback=self.handle_notification)
             req = self.device_info_request()
+            logging.debug("FingerBotService %s: sending device_info_request", self.mac)
             self.send_request(req)
 
             while not self.pairing_complete:
+                logging.debug("FingerBotService %s: waiting for pairing to complete", self.mac)
                 await asyncio.sleep(0.1)
+            logging.info("FingerBotService %s: pairing complete", self.mac)
             return True
         except Exception as e:
             raise
@@ -332,16 +338,28 @@ class FingerBotService:
         self.sn_ack = 0
 
     def handle_notification(self, handle, value):
+        logging.debug(
+            "FingerBotService %s: notification received on handle=%s len=%s",
+            self.mac,
+            handle,
+            len(value),
+        )
         ret = self.ble_receiver.parse_data_received(value)
         if not ret:
+            logging.debug("FingerBotService %s: notification parse returned None", self.mac)
             return
 
         if ret.code == Coder.FUN_SENDER_DEVICE_INFO:
+            logging.info("FingerBotService %s: received device info response", self.mac)
             self.secret_key_manager.setSrand(ret.resp.srand)
             req = self.pair_request()
+            logging.debug("FingerBotService %s: sending pair_request", self.mac)
             self.send_request(req)
         elif ret.code == Coder.FUN_SENDER_PAIR:
+            logging.info("FingerBotService %s: received pairing confirmation", self.mac)
             self.pairing_complete = True
+        else:
+            logging.debug("FingerBotService %s: received notification code=%s", self.mac, ret.code)
 
     def send_request(self, xrequest):
         packets = xrequest.pack()
@@ -485,11 +503,16 @@ class FingerBotService:
         return self.send_dps(dps_data)
 
     def press_button(self):
+        logging.info("FingerBotService %s: starting press cycle", self.mac)
         req = self.push_button()
+        logging.debug("FingerBotService %s: sending push_button request", self.mac)
         self.send_request(req)
+        logging.debug("FingerBotService %s: push_button request sent", self.mac)
         time.sleep(1)
+        logging.debug("FingerBotService %s: sending release_button request", self.mac)
         req = self.release_button()
         self.send_request(req)
+        logging.info("FingerBotService %s: completed press cycle", self.mac)
 
     def disconnect(self):
         self.adapter.stop()
