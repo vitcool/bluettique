@@ -96,6 +96,14 @@ Make sure to replace the placeholders with your actual credentials and settings.
 
    `python main.py`
 
+## Quick FingerBot Test (host, no Docker)
+
+Use this to press the main FingerBot directly from the host OS (Bluetooth/gatttool access to `hci0` required):
+
+1. Activate the virtual environment.
+2. Ensure the `.env` file has `FINGERBOT_*_MAIN` values populated.
+3. Run `python scripts/fingerbot_press.py` to connect and trigger a press.
+
 ## Running with Docker Compose
 
 1. Ensure Docker and Docker Compose are installed on your system.

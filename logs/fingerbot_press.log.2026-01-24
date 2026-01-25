@@ -1,0 +1,71 @@
+2026-01-24 13:20:30,283 - INFO - FingerBot (host): connecting to main device and pressing button
+2026-01-24 13:20:35,504 - DEBUG - gatttool_cmd=gatttool -i hci0 -I
+2026-01-24 13:20:35,512 - INFO - Running...
+2026-01-24 13:20:35,512 - INFO - Connecting to DC:23:50:24:72:29 with timeout=10
+2026-01-24 13:20:43,187 - INFO - FingerBot (host): connecting to main device and pressing button
+2026-01-24 13:20:43,423 - DEBUG - gatttool_cmd=gatttool -i hci0 -I
+2026-01-24 13:20:43,429 - INFO - Running...
+2026-01-24 13:20:43,429 - INFO - Connecting to DC:23:50:24:72:29 with timeout=10
+2026-01-24 13:20:53,531 - ERROR - Timed out connecting to DC:23:50:24:72:29 after 10 seconds.
+2026-01-24 13:20:53,532 - DEBUG - FINGERBOT_MAIN: Connection failed, retrying... Exception: Timed out connecting to DC:23:50:24:72:29 after 10 seconds.
+2026-01-24 13:20:53,582 - INFO - Stopping
+2026-01-24 13:20:53,633 - INFO - Listener thread finished
+2026-01-24 13:20:54,093 - DEBUG - gatttool_cmd=gatttool -i hci0 -I
+2026-01-24 13:20:54,099 - INFO - Running...
+2026-01-24 13:20:54,099 - INFO - Connecting to DC:23:50:24:72:29 with timeout=10
+2026-01-24 13:21:04,200 - ERROR - Timed out connecting to DC:23:50:24:72:29 after 10 seconds.
+2026-01-24 13:21:04,200 - DEBUG - FINGERBOT_MAIN: Connection failed, retrying... Exception: Timed out connecting to DC:23:50:24:72:29 after 10 seconds.
+2026-01-24 13:21:04,250 - INFO - Stopping
+2026-01-24 13:21:04,301 - INFO - Listener thread finished
+2026-01-24 13:21:04,897 - DEBUG - gatttool_cmd=gatttool -i hci0 -I
+2026-01-24 13:21:04,905 - INFO - Running...
+2026-01-24 13:21:04,905 - INFO - Connecting to DC:23:50:24:72:29 with timeout=10
+2026-01-24 13:21:15,006 - ERROR - Timed out connecting to DC:23:50:24:72:29 after 10 seconds.
+2026-01-24 13:21:15,006 - DEBUG - FINGERBOT_MAIN: Connection failed, retrying... Exception: Timed out connecting to DC:23:50:24:72:29 after 10 seconds.
+2026-01-24 13:21:15,056 - INFO - Stopping
+2026-01-24 13:21:15,108 - INFO - Listener thread finished
+2026-01-24 13:21:15,560 - DEBUG - gatttool_cmd=gatttool -i hci0 -I
+2026-01-24 13:21:15,566 - INFO - Running...
+2026-01-24 13:21:15,566 - INFO - Connecting to DC:23:50:24:72:29 with timeout=10
+2026-01-24 13:21:25,667 - ERROR - Timed out connecting to DC:23:50:24:72:29 after 10 seconds.
+2026-01-24 13:21:25,668 - DEBUG - FINGERBOT_MAIN: Connection failed, retrying... Exception: Timed out connecting to DC:23:50:24:72:29 after 10 seconds.
+2026-01-24 13:21:25,718 - INFO - Stopping
+2026-01-24 13:21:25,769 - INFO - Listener thread finished
+2026-01-24 13:21:26,307 - DEBUG - gatttool_cmd=gatttool -i hci0 -I
+2026-01-24 13:21:26,772 - INFO - Running...
+2026-01-24 13:21:26,773 - INFO - Connecting to DC:23:50:24:72:29 with timeout=10
+2026-01-24 13:21:36,873 - ERROR - Timed out connecting to DC:23:50:24:72:29 after 10 seconds.
+2026-01-24 13:21:36,873 - DEBUG - FINGERBOT_MAIN: Connection failed, retrying... Exception: Timed out connecting to DC:23:50:24:72:29 after 10 seconds.
+2026-01-24 13:21:36,924 - INFO - Stopping
+2026-01-24 13:21:36,975 - INFO - Listener thread finished
+2026-01-24 13:21:38,913 - DEBUG - gatttool_cmd=gatttool -i hci0 -I
+2026-01-24 13:21:38,919 - INFO - Running...
+2026-01-24 13:21:38,919 - INFO - Connecting to DC:23:50:24:72:29 with timeout=10
+2026-01-24 13:21:49,021 - ERROR - Timed out connecting to DC:23:50:24:72:29 after 10 seconds.
+2026-01-24 13:21:49,021 - DEBUG - FINGERBOT_MAIN: Connection failed, retrying... Exception: Timed out connecting to DC:23:50:24:72:29 after 10 seconds.
+2026-01-24 13:21:49,071 - INFO - Stopping
+2026-01-24 13:21:49,123 - INFO - Listener thread finished
+2026-01-24 13:21:49,546 - DEBUG - gatttool_cmd=gatttool -i hci0 -I
+2026-01-24 13:21:49,552 - INFO - Running...
+2026-01-24 13:21:49,552 - INFO - Connecting to DC:23:50:24:72:29 with timeout=10
+2026-01-24 13:21:59,653 - ERROR - Timed out connecting to DC:23:50:24:72:29 after 10 seconds.
+2026-01-24 13:21:59,653 - DEBUG - FINGERBOT_MAIN: Connection failed, retrying... Exception: Timed out connecting to DC:23:50:24:72:29 after 10 seconds.
+2026-01-24 13:21:59,703 - INFO - Stopping
+2026-01-24 13:21:59,755 - INFO - Listener thread finished
+2026-01-24 13:22:00,704 - DEBUG - gatttool_cmd=gatttool -i hci0 -I
+2026-01-24 13:22:00,710 - INFO - Running...
+2026-01-24 13:22:00,710 - INFO - Connecting to DC:23:50:24:72:29 with timeout=10
+2026-01-24 13:22:10,811 - ERROR - Timed out connecting to DC:23:50:24:72:29 after 10 seconds.
+2026-01-24 13:22:10,812 - DEBUG - FINGERBOT_MAIN: Connection failed, retrying... Exception: Timed out connecting to DC:23:50:24:72:29 after 10 seconds.
+2026-01-24 13:22:10,862 - INFO - Stopping
+2026-01-24 13:22:10,913 - INFO - Listener thread finished
+2026-01-24 13:22:11,368 - DEBUG - gatttool_cmd=gatttool -i hci0 -I
+2026-01-24 13:22:11,382 - INFO - Running...
+2026-01-24 13:22:11,383 - INFO - Connecting to DC:23:50:24:72:29 with timeout=10
+2026-01-24 13:22:21,484 - ERROR - Timed out connecting to DC:23:50:24:72:29 after 10 seconds.
+2026-01-24 13:22:21,484 - DEBUG - FINGERBOT_MAIN: Connection failed, retrying... Exception: Timed out connecting to DC:23:50:24:72:29 after 10 seconds.
+2026-01-24 13:22:21,534 - INFO - Stopping
+2026-01-24 13:22:21,585 - INFO - Listener thread finished
+2026-01-24 13:22:22,028 - DEBUG - gatttool_cmd=gatttool -i hci0 -I
+2026-01-24 13:22:22,034 - INFO - Running...
+2026-01-24 13:22:22,034 - INFO - Connecting to DC:23:50:24:72:29 with timeout=10
