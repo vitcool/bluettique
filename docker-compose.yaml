@@ -1,7 +1,6 @@
 services:
   python-app:
     build: .
-    container_name: python-app
     ports:
       - "5000:5000"  # Main app port
     privileged: true  # Required for accessing host devices
@@ -29,7 +28,6 @@ services:
 
   mosquitto:
     image: eclipse-mosquitto
-    container_name: mosquitto
     ports:
       - "1883:1883"
       - "9001:9001"
