@@ -14,6 +14,7 @@ class ChargingState:
 class WaitPowerState(ChargingState):
     async def handle(self, handler: "ChargingStateHandler"):
         logging.info("Charging: WAIT_POWER - waiting for TAPO offline->online cycle")
+        first_launch = handler.first_launch
         try:
             await handler.tapo_controller.get_status()
             tapo_status = handler.tapo_controller.status.get_status()
@@ -21,6 +22,14 @@ class WaitPowerState(ChargingState):
         except Exception:
             logging.warning("Charging: TAPO status refresh failed; treating as offline", exc_info=True)
             is_online = False
+
+        if first_launch:
+            handler.first_launch = False
+            if is_online:
+                handler.low_power_counter = 0
+                handler.stable_checks_remaining = handler.config.stable_power_checks
+                handler.set_state(StartChargingState(), "First launch with TAPO online")
+                return
 
         if not is_online:
             handler.offline_seen_in_wait = True
@@ -218,6 +227,7 @@ class ChargingStateHandler:
         self.first_power_check_at: Optional[float] = None
         self.stable_checks_remaining = self.config.stable_power_checks
         self.offline_seen_in_wait = False
+        self.first_launch = True
 
     def set_state(self, state: ChargingState, reason: str | None = None):
         logging.info(
