@@ -17,6 +17,9 @@ class BluettiMQTTService:
         self.broker_connection_timeout = max(
             int(os.getenv("BLUETTI_BROKER_CONNECTION_TIMEOUT", "90")), 90
         )
+        # Retries for pairing the first time; keeps runs resilient to flaky BT.
+        self.connect_retries = max(int(os.getenv("BLUETTI_BROKER_RETRIES", "3")), 1)
+        self.connect_retry_delay = max(int(os.getenv("BLUETTI_BROKER_RETRY_DELAY", "5")), 1)
         self.broker_adapter = os.getenv("BLUETTI_BROKER_ADAPTER")
         self.client = mqtt.Client()
 
@@ -32,34 +35,47 @@ class BluettiMQTTService:
         if not self._validate_config():
             return False
         self._log_config()
-        try:
-            if self.device_connected:
-                self.device_connected = False
-            if not self.start_broker():
-                return False
-            self.client.on_connect = self.on_connect
-            self.client.on_message = self.on_message
+        for attempt in range(1, self.connect_retries + 1):
             try:
-                self.client.connect(self.broker_host, 1883, keepalive=60)
+                if self.device_connected:
+                    self.device_connected = False
+                if not self.start_broker():
+                    logging.error("Failed to start broker; aborting connect attempt.")
+                    return False
+                self.client.on_connect = self.on_connect
+                self.client.on_message = self.on_message
+                try:
+                    self.client.connect(self.broker_host, 1883, keepalive=60)
+                except Exception as e:
+                    logging.error(f"MQTT connection failed: {e}")
+                self.start_client()
+                try:
+                    await asyncio.wait_for(
+                        self._wait_for_pairing(), timeout=self.broker_connection_timeout
+                    )
+                    return True
+                except asyncio.TimeoutError:
+                    logging.warning(
+                        "Timed out waiting for Bluetti pairing; stopping client and broker."
+                    )
+                    self.stop_client()
+                    self.stop_broker()
             except Exception as e:
-                logging.error(f"MQTT connection failed: {e}")
-            self.start_client()
-            try:
-                await asyncio.wait_for(
-                    self._wait_for_pairing(), timeout=self.broker_connection_timeout
-                )
-                return True
-            except asyncio.TimeoutError:
-                logging.warning(
-                    "Timed out waiting for Bluetti pairing; stopping client and broker."
-                )
+                logging.debug(f"Exception occurred during connection attempt {attempt}: {e}")
                 self.stop_client()
                 self.stop_broker()
-                return False
-        except Exception as e:
-            logging.debug(f"Exception occurred during connection: {e}")
-            self.stop_client()
-            return False
+
+            if attempt < self.connect_retries:
+                logging.info(
+                    f"Retrying Bluetti connection in {self.connect_retry_delay}s "
+                    f"(attempt {attempt}/{self.connect_retries} failed)..."
+                )
+                await asyncio.sleep(self.connect_retry_delay)
+
+        logging.error(
+            f"All {self.connect_retries} Bluetti connection attempts failed; giving up."
+        )
+        return False
 
     async def _wait_for_pairing(self):
         while not self.device_connected:

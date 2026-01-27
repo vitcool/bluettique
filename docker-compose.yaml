@@ -15,6 +15,7 @@ services:
       - /var/lib/bluetooth:/var/lib/bluetooth # Mount host's Bluetooth data
       - /sys/class/bluetooth:/sys/class/bluetooth # Mount host's Bluetooth data
       - /dev:/dev # Allow access to USB devices (Bluetooth adapter)
+      - .env:/app/.env  # Provide Bluetti/Tapo configuration
     environment:
       - DBUS_SYSTEM_BUS_ADDRESS=unix:path=/host/run/dbus/system_bus_socket
     restart: unless-stopped

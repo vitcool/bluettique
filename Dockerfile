@@ -18,7 +18,7 @@ COPY . /app
 # Install virtualenv and create a virtual environment
 RUN python -m venv /venv
 
-# Activate the virtual environment by updating the PATH
+# Ensure the virtual environment binaries are first on PATH
 ENV PATH="/venv/bin:$PATH"
 
 # Set the timezone
@@ -27,8 +27,4 @@ ENV TZ=Europe/Kyiv
 # Install any dependencies if needed (e.g., if requirements.txt exists)
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Run the script
-ENV PATH="/opt/venv/bin:$PATH"
-
-# Run the application
 CMD ["python", "main.py"]
