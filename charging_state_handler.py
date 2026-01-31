@@ -52,6 +52,8 @@ class StartChargingState(ChargingState):
         logging.info("Charging: START_CHARGING - turning socket on")
         try:
             await handler.tapo_controller.start_charging()
+            await handler.bluetti_controller.initialize()
+            handler.bluetti_controller.turn_ac("OFF")
             handler.socket_on_at = time.monotonic()
             handler.first_power_check_at = handler.socket_on_at + handler.config.first_power_check_delay_sec
             handler.low_power_counter = 0
@@ -215,6 +217,7 @@ class ChargingStateHandler:
     def __init__(
         self,
         tapo_controller,
+        bluetti_controller,
         config: Optional[ChargingConfig] = None,
         supervisor: Optional[ChargingSupervisor] = None,
     ):
@@ -222,6 +225,7 @@ class ChargingStateHandler:
         self.supervisor = supervisor or ChargingSupervisor(self.config)
         self.state: ChargingState = WaitPowerState()
         self.tapo_controller = tapo_controller
+        self.bluetti_controller = bluetti_controller
         self.low_power_counter = 0
         self.socket_on_at: Optional[float] = None
         self.first_power_check_at: Optional[float] = None

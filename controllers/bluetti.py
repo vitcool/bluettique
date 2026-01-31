@@ -14,7 +14,11 @@ class BluettiController:
         self.dc_turned_on = False
 
     async def initialize(self):
-        logging.info("BluettiController initialized.")
+        if self.connection_set:
+            logging.info("BluettiController already connected; skipping initialize.")
+            return
+
+        logging.info("BluettiController initializing.")
         for attempt in range(CONNECTION_RETRY_ATTEMPTS):
             if await self.bluetti.connect():
                 logging.info("BluettiMQTTService connected.")

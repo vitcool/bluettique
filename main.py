@@ -51,7 +51,7 @@ async def main(tapo_controller, bluetti_controller):
         await test_bluetti_dc_cycle(bluetti_controller)
 
     # Main charging state machine
-    charging_handler = ChargingStateHandler(tapo_controller)
+    charging_handler = ChargingStateHandler(tapo_controller, bluetti_controller)
     while True:
         await charging_handler.handle_state()
 
