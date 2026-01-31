@@ -44,12 +44,16 @@ async def main(tapo_controller, bluetti_controller):
     signal.signal(signal.SIGTERM, handle_stop_signal)
     signal.signal(signal.SIGINT, handle_stop_signal)
 
-    await test_bluetti_dc_cycle(bluetti_controller)
+    # Optional one-shot DC test; disable via env RUN_DC_TEST=false
+    # Default off so the state machine starts immediately; enable if you need the DC pulse.
+    run_dc_test = os.getenv("RUN_DC_TEST", "false").lower() in ["1", "true", "yes", "on"]
+    if run_dc_test:
+        await test_bluetti_dc_cycle(bluetti_controller)
 
-    # Original state machine loop commented out for Bluetti testing
-    # charging_handler = ChargingStateHandler(tapo_controller)
-    # while True:
-    #     await charging_handler.handle_state()
+    # Main charging state machine
+    charging_handler = ChargingStateHandler(tapo_controller)
+    while True:
+        await charging_handler.handle_state()
 
 
 load_dotenv()
