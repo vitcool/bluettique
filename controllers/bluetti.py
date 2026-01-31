@@ -57,5 +57,6 @@ class BluettiController:
         return status
 
     def stop(self):
+        logging.info("Bluetti: Stopping MQTT client and broker")
         self.bluetti.stop_client()
         self.bluetti.stop_broker()

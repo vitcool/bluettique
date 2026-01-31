@@ -7,13 +7,19 @@ RUN apt-get update && apt-get install -y \
     libbluetooth-dev \
     dbus \
     sudo \
-    tzdata
+    tzdata \
+    procps \
+    mosquitto \
+    mosquitto-clients
 
 # Set the working directory in the container
 WORKDIR /app
 
 # Copy the current directory contents into the container at /app
 COPY . /app
+
+# Configure mosquitto with the repo config
+RUN mkdir -p /etc/mosquitto && cp /app/mosquitto.conf /etc/mosquitto/mosquitto.conf
 
 # Install virtualenv and create a virtual environment
 RUN python -m venv /venv
@@ -27,4 +33,4 @@ ENV TZ=Europe/Kyiv
 # Install any dependencies if needed (e.g., if requirements.txt exists)
 RUN pip install --no-cache-dir -r requirements.txt
 
-CMD ["python", "main.py"]
+CMD ["sh", "-c", "mosquitto -c /etc/mosquitto/mosquitto.conf & python main.py & python3 -m http.server 8080 --directory logs & wait"]

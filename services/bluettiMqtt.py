@@ -143,6 +143,8 @@ class BluettiMQTTService:
             self.broker_host,
             "--interval",
             self.broker_interval,
+            "--ha-config",
+            "advanced",
             self.mac_address,
         ]
         if self.broker_adapter:
