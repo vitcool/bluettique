@@ -188,12 +188,33 @@ class BluettiMQTTService:
     def stop_broker(self):
         """Stop the bluetti-mqtt broker subprocess."""
         if hasattr(self, "broker_process") and self.broker_process:
-            self.broker_process.terminate()
-            self.broker_process.wait()
+            try:
+                self.broker_process.terminate()
+                self.broker_process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                logging.warning("bluetti-mqtt broker did not exit on SIGTERM; killing.")
+                self.broker_process.kill()
+                self.broker_process.wait()
             logging.debug("bluetti-mqtt broker stopped successfully.")
             self.broker_process = None
         else:
             logging.debug("No broker process found to stop.")
+
+    def disconnect_device(self):
+        """Ask BlueZ to drop the BLE connection so the adapter is freed."""
+        if not self.mac_address:
+            return
+        try:
+            subprocess.run(
+                ["bluetoothctl", "disconnect", self.mac_address],
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            logging.debug(f"bluetoothctl disconnect issued for {self.mac_address}")
+        except FileNotFoundError:
+            logging.warning("bluetoothctl not available in container; cannot force disconnect.")
 
     def stop_client(self):
         self.client.loop_stop()
