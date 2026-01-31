@@ -1,6 +1,7 @@
 asyncio-mqtt==0.14.0
 black==24.8.0
-bluetti-mqtt==0.15.0
+bluetti-mqtt-asyncio==0.16.6
+bleak==0.22.3
 certifi==2024.8.30
 charset-normalizer==3.3.2
 click==8.1.7
