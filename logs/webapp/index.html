@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Logs Viewer</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="topbar">
+        <h1>Charging Log</h1>
+        <div class="view-toggle" aria-label="Toggle between state summary and full log">
+            <button type="button" data-view="states" class="active">States</button>
+            <button type="button" data-view="transitions">Transitions</button>
+            <button type="button" data-view="log">Full log</button>
+        </div>
+    </div>
+
+    <section id="statesView" class="panel">
+        <div class="latest">
+            <div>
+                <div class="label" aria-label="Most recent state">Latest state</div>
+                <div id="latestState" class="state">—</div>
+            </div>
+            <div id="latestTime" class="time">Waiting for data…</div>
+        </div>
+        <div id="stateTimeline" class="timeline" aria-live="polite">
+            <div class="state-row">
+                <div class="state-title">Listening for state changes…</div>
+                <div class="meta"></div>
+                <div class="detail">Updates every 2 seconds</div>
+            </div>
+        </div>
+    </section>
+
+    <section id="transitionsView" class="panel hidden">
+        <div class="latest">
+            <div>
+                <div class="label">Recent transitions</div>
+                <div class="state">State changes only</div>
+            </div>
+            <div class="time" id="transitionCount">—</div>
+        </div>
+        <div id="transitionsTimeline" class="timeline" aria-live="polite">
+            <div class="state-row">
+                <div class="state-title">Waiting for first transition…</div>
+                <div class="meta"></div>
+                <div class="detail">Only logs when the state value changes</div>
+            </div>
+        </div>
+    </section>
+
+    <section id="logView" class="panel hidden">
+        <pre id="logContent">Loading logs...</pre>
+    </section>
+
+    <script src="app.js"></script>
+</body>
+</html>

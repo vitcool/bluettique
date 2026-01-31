@@ -33,4 +33,4 @@ ENV TZ=Europe/Kyiv
 # Install any dependencies if needed (e.g., if requirements.txt exists)
 RUN pip install --no-cache-dir -r requirements.txt
 
-CMD ["sh", "-c", "mosquitto -c /etc/mosquitto/mosquitto.conf & python main.py & python3 -m http.server 8080 --directory logs & wait"]
+CMD ["sh", "-c", "mosquitto -c /etc/mosquitto/mosquitto.conf & python main.py & python3 -m http.server 8080 --directory logs/webapp & wait"]
