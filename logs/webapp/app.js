@@ -8,6 +8,10 @@ const viewButtons = document.querySelectorAll('.view-toggle button');
 const statesView = document.getElementById('statesView');
 const transitionsView = document.getElementById('transitionsView');
 const logView = document.getElementById('logView');
+const boilerView = document.getElementById('boilerView');
+const boilerLogContent = document.getElementById('boilerLogContent');
+const boilerStatus = document.getElementById('boilerStatus');
+const boilerMeta = document.getElementById('boilerMeta');
 const acStatus = document.getElementById('acStatus');
 const acStatusTime = document.getElementById('acStatusTime');
 const batteryPercentEl = document.getElementById('batteryPercent');
@@ -18,6 +22,7 @@ const connStatus = document.getElementById('connStatus');
 const connDetail = document.getElementById('connDetail');
 const acOutputDetail = document.getElementById('acOutputDetail');
 const LOG_LINE_LIMIT = 800; // cap full-log view for performance
+const BOILER_LOG_LIMIT = 400;
 const urlParams = new URLSearchParams(window.location.search);
 const CONNECTION_WINDOW_MIN = (() => {
     const val = Number(urlParams.get('conn_window_min'));
@@ -38,9 +43,12 @@ const tsRegex = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3})/;
 function setView(view) {
     const showStates = view === 'states';
     const showTransitions = view === 'transitions';
+    const showLog = view === 'log';
+    const showBoiler = view === 'boiler';
     statesView.classList.toggle('hidden', !showStates);
     transitionsView.classList.toggle('hidden', !showTransitions);
-    logView.classList.toggle('hidden', showStates || showTransitions);
+    logView.classList.toggle('hidden', !showLog);
+    boilerView.classList.toggle('hidden', !showBoiler);
     viewButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.view === view));
 }
 
@@ -497,6 +505,32 @@ async function fetchLogs() {
     }
 }
 
+async function fetchBoilerLogs() {
+    try {
+        const response = await fetch('boiler.log', { cache: 'no-cache' });
+        if (!response.ok) {
+            boilerStatus.textContent = `Fetch failed (${response.status})`;
+            return;
+        }
+        const text = await response.text();
+        const lines = text.split('\n');
+        const totalLines = lines.length;
+        const logSlice = totalLines > BOILER_LOG_LIMIT ? lines.slice(-BOILER_LOG_LIMIT) : lines;
+        const reversed = [...logSlice].reverse().join('\n');
+        const notice = totalLines > BOILER_LOG_LIMIT
+            ? `(showing last ${BOILER_LOG_LIMIT} of ${totalLines} lines)\n`
+            : '';
+        boilerLogContent.textContent = notice + reversed;
+        boilerStatus.textContent = totalLines ? 'Latest entries' : 'No boiler logs yet';
+        boilerMeta.textContent = 'logs/boiler_logs/boiler.log';
+    } catch (error) {
+        boilerStatus.textContent = 'Error reading boiler log';
+        console.error('Error fetching boiler logs:', error);
+    }
+}
+
 setView('transitions');
 setInterval(fetchLogs, 2000);
 fetchLogs();
+setInterval(fetchBoilerLogs, 5000);
+fetchBoilerLogs();

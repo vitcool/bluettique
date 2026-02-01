@@ -89,6 +89,19 @@ IDLE_INTERVAL=
 LONG_IDLE_INTERVAL=
 
 ENV='dev' # 'prod'
+
+# Boiler nightly scheduler (independent from charging loop)
+BOILER_ENABLED=false
+BOILER_TAPO_EMAIL=
+BOILER_TAPO_PASSWORD=
+BOILER_TAPO_IP=
+BOILER_WINDOW_START="00:00"
+BOILER_WINDOW_END="06:00"
+BOILER_TOTAL_RUN_SEC=7200
+BOILER_POLL_SEC=300
+BOILER_ACTIVE_W_THRESHOLD=0
+BOILER_STATE_FILE=logs/boiler_logs/boiler_state.json
+BOILER_LOG_FILE=logs/boiler_logs/boiler.log
 ```
 
 Make sure to replace the placeholders with your actual credentials and settings.
@@ -104,6 +117,13 @@ Make sure to replace the placeholders with your actual credentials and settings.
 2. Run the application:
 
    `python main.py`
+
+### Boiler nightly scheduler
+
+- When `BOILER_ENABLED=true`, a separate async scheduler runs alongside charging. It targets a dedicated TAPO socket (credentials/IP above) and guarantees the socket is ON for `BOILER_TOTAL_RUN_SEC` seconds within the daily window (`BOILER_WINDOW_START`–`BOILER_WINDOW_END`, default 00:00–06:00).
+- If power is unavailable at window start, it polls every `BOILER_POLL_SEC` seconds until the socket comes online, then starts. If power drops mid-run, the countdown pauses and resumes when power returns (only the remaining seconds are run).
+- An optional `BOILER_ACTIVE_W_THRESHOLD` lets you count runtime only while power draw meets/exceeds the threshold (0 means count whenever the socket is ON).
+- Progress persists per night to `BOILER_STATE_FILE`; if the process restarts during the same window, it resumes the remaining seconds. Logs are written to `BOILER_LOG_FILE`.
 
 ## Charging flow behavior
 

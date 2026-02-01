@@ -7,6 +7,8 @@ from controllers.bluetti import BluettiController
 from controllers.tapo import TapoController
 from utils.logger import setup_logging
 from charging_state_handler import ChargingStateHandler
+from services.boiler_scheduler import BoilerScheduler, BoilerConfig
+from services.tapo import TapoService
 
 async def test_bluetti_dc_cycle(bluetti_controller: BluettiController):
     """Initialize Bluetti, then toggle DC on/off five times with 5s intervals."""
@@ -34,8 +36,12 @@ async def main(tapo_controller, bluetti_controller):
     logging.info("Starting Bluetti DC cycle test...")
     print("Starting Bluetti DC cycle test...")
 
+    boiler_task = None
+
     def handle_stop_signal(signum, frame):
         logging.info("Stop signal received, performing cleanup...")
+        if boiler_task:
+            boiler_task.cancel()
         bluetti_controller.stop()
         logging.info("Cleanup complete, exiting.")
         exit(0)
@@ -49,6 +55,20 @@ async def main(tapo_controller, bluetti_controller):
     run_dc_test = os.getenv("RUN_DC_TEST", "false").lower() in ["1", "true", "yes", "on"]
     if run_dc_test:
         await test_bluetti_dc_cycle(bluetti_controller)
+
+    # Optional boiler scheduler (runs concurrently with charging logic)
+    boiler_config = BoilerConfig.from_env()
+    if boiler_config.enabled:
+        boiler_tapo = TapoService(
+            username=boiler_config.username,
+            password=boiler_config.password,
+            ip_address=boiler_config.ip_address,
+        )
+        boiler_scheduler = BoilerScheduler(boiler_tapo, config=boiler_config)
+        boiler_task = asyncio.create_task(boiler_scheduler.run())
+        logging.info("Boiler scheduler started in background.")
+    else:
+        logging.info("Boiler scheduler disabled.")
 
     # Main charging state machine
     charging_handler = ChargingStateHandler(tapo_controller, bluetti_controller)

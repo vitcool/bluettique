@@ -8,11 +8,12 @@
 </head>
 <body>
     <div class="topbar">
-        <h1>Charging Log</h1>
-        <div class="view-toggle" aria-label="Toggle between state summary and full log">
+        <h1>Charging & Boiler Logs</h1>
+        <div class="view-toggle" aria-label="Toggle between views">
             <button type="button" data-view="states" class="active">States</button>
             <button type="button" data-view="transitions">Transitions</button>
-            <button type="button" data-view="log">Full log</button>
+            <button type="button" data-view="log">Charging log</button>
+            <button type="button" data-view="boiler">Boiler log</button>
         </div>
     </div>
 
@@ -76,6 +77,17 @@
 
     <section id="logView" class="panel hidden">
         <pre id="logContent">Loading logs...</pre>
+    </section>
+
+    <section id="boilerView" class="panel hidden">
+        <div class="latest">
+            <div>
+                <div class="label">Boiler log</div>
+                <div class="state" id="boilerStatus">Waiting for data…</div>
+            </div>
+            <div class="time" id="boilerMeta">logs/boiler_logs/boiler.log</div>
+        </div>
+        <pre id="boilerLogContent">Loading boiler logs...</pre>
     </section>
 
     <script src="app.js"></script>
