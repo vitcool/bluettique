@@ -8,6 +8,16 @@ const viewButtons = document.querySelectorAll('.view-toggle button');
 const statesView = document.getElementById('statesView');
 const transitionsView = document.getElementById('transitionsView');
 const logView = document.getElementById('logView');
+const acStatus = document.getElementById('acStatus');
+const acStatusTime = document.getElementById('acStatusTime');
+const batteryPercentEl = document.getElementById('batteryPercent');
+const batteryTime = document.getElementById('batteryTime');
+const inputStatus = document.getElementById('inputStatus');
+const inputDetail = document.getElementById('inputDetail');
+const connStatus = document.getElementById('connStatus');
+const connDetail = document.getElementById('connDetail');
+const LOG_LINE_LIMIT = 800; // cap full-log view for performance
+const OFFLINE_WAIT_COOLDOWN_MS = 6 * 60 * 60 * 1000; // show OFFLINE→WAIT at most once every 6h
 
 const stateRegex = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) - [A-Z]+ - Charging: ([^-]+?)(?: - (.*))?$/;
 const tsRegex = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3})/;
@@ -31,9 +41,12 @@ function formatDate(ts) {
     return isNaN(d.getTime()) ? ts : d.toLocaleString();
 }
 
+function parseTimestamp(ts) {
+    return new Date(ts.replace(' ', 'T').replace(',', '.'));
+}
+
 function relativeTime(ts) {
-    const iso = ts.replace(' ', 'T').replace(',', '.');
-    const d = new Date(iso);
+    const d = parseTimestamp(ts);
     if (isNaN(d.getTime())) return '';
     const diff = Date.now() - d.getTime();
     const mins = Math.floor(diff / 60000);
@@ -43,6 +56,20 @@ function relativeTime(ts) {
     if (hrs < 24) return `${hrs} hr${hrs === 1 ? '' : 's'} ago`;
     const days = Math.floor(hrs / 24);
     return `${days} day${days === 1 ? '' : 's'} ago`;
+}
+
+function formatWithRelative(ts) {
+    if (!ts) return 'Waiting for data…';
+    const rel = relativeTime(ts);
+    return rel ? `${formatDate(ts)} (${rel})` : formatDate(ts);
+}
+
+function formatDuration(ms) {
+    if (!Number.isFinite(ms) || ms < 0) return '';
+    const totalMinutes = Math.round(ms / 60000);
+    const hours = Math.floor(totalMinutes / 60);
+    const mins = totalMinutes % 60;
+    return `${hours.toString().padStart(2, '0')}h ${mins.toString().padStart(2, '0')}m`;
 }
 
 function normalizeState(raw) {
@@ -84,6 +111,122 @@ function normalizeState(raw) {
     }
 
     return trimmed;
+}
+
+function pickLatestTimestamp(timestamps) {
+    const dated = timestamps
+        .filter(Boolean)
+        .map(ts => ({ ts, time: parseTimestamp(ts).getTime() }))
+        .filter(entry => !isNaN(entry.time));
+    if (!dated.length) return null;
+    dated.sort((a, b) => b.time - a.time);
+    return dated[0].ts;
+}
+
+function extractPowerSummary(lines) {
+    const summary = {
+        acOutputOn: null,
+        acOutputTs: null,
+        batteryPercent: null,
+        batteryTs: null,
+        dcInputPower: null,
+        dcInputTs: null,
+        acInputPower: null,
+        acInputTs: null,
+        lastMessageTs: null
+    };
+
+    for (let i = lines.length - 1; i >= 0; i--) {
+        const line = lines[i];
+        const tsMatch = tsRegex.exec(line);
+        const ts = tsMatch ? tsMatch[1] : null;
+
+        if (!summary.lastMessageTs && ts && line.includes('Received message:')) {
+            summary.lastMessageTs = ts;
+        }
+
+        if (summary.acOutputOn === null) {
+            const match = line.match(/ac_output_on\s+(\w+)/i);
+            if (match) {
+                summary.acOutputOn = match[1].toUpperCase();
+                summary.acOutputTs = ts;
+            }
+        }
+
+        if (summary.batteryPercent === null) {
+            const match = line.match(/total_battery_percent\s+([\d.]+)/i);
+            if (match) {
+                summary.batteryPercent = parseFloat(match[1]);
+                summary.batteryTs = ts;
+            }
+        }
+
+        if (summary.dcInputPower === null) {
+            const match = line.match(/dc_input_power\s+(-?[\d.]+)/i);
+            if (match) {
+                summary.dcInputPower = parseFloat(match[1]);
+                summary.dcInputTs = ts;
+            }
+        }
+
+        if (summary.acInputPower === null) {
+            const match = line.match(/ac_input_power\s+(-?[\d.]+)/i);
+            if (match) {
+                summary.acInputPower = parseFloat(match[1]);
+                summary.acInputTs = ts;
+            }
+        }
+
+        if (
+            summary.acOutputOn !== null &&
+            summary.batteryPercent !== null &&
+            summary.dcInputPower !== null &&
+            summary.acInputPower !== null
+        ) {
+            break;
+        }
+    }
+
+    return summary;
+}
+
+function renderPowerSummary(summary) {
+    const acVal = summary.acOutputOn;
+    acStatus.textContent = acVal ?? '—';
+    acStatus.classList.toggle('on', acVal === 'ON');
+    acStatus.classList.toggle('off', acVal === 'OFF');
+    acStatusTime.textContent = formatWithRelative(summary.acOutputTs);
+
+    const pct = summary.batteryPercent;
+    batteryPercentEl.textContent = typeof pct === 'number' && !isNaN(pct) ? Math.round(pct) : '—';
+    batteryTime.textContent = formatWithRelative(summary.batteryTs);
+
+    const dc = summary.dcInputPower;
+    const ac = summary.acInputPower;
+    const inputOn = (dc ?? 0) > 0 || (ac ?? 0) > 0;
+    inputStatus.textContent = inputOn ? 'ON' : 'OFF';
+    inputStatus.classList.toggle('on', inputOn);
+    inputStatus.classList.toggle('off', !inputOn);
+
+    const parts = [];
+    if (typeof dc === 'number' && !isNaN(dc)) parts.push(`DC ${Math.round(dc)} W`);
+    if (typeof ac === 'number' && !isNaN(ac)) parts.push(`AC ${Math.round(ac)} W`);
+    const latestInputTs = pickLatestTimestamp([summary.dcInputTs, summary.acInputTs]);
+    const tsText = latestInputTs ? formatWithRelative(latestInputTs) : 'Waiting for data…';
+    inputDetail.textContent = parts.length ? `${parts.join(' • ')} — ${tsText}` : tsText;
+
+    const lastMsg = summary.lastMessageTs;
+    if (lastMsg) {
+        const ageMs = Date.now() - parseTimestamp(lastMsg).getTime();
+        const online = ageMs < 60_000; // 60s freshness window
+        connStatus.textContent = online ? 'ONLINE' : 'OFFLINE';
+        connStatus.classList.toggle('on', online);
+        connStatus.classList.toggle('off', !online);
+        connDetail.textContent = `Last message ${formatWithRelative(lastMsg)}`;
+    } else {
+        connStatus.textContent = '—';
+        connDetail.textContent = 'Waiting for data…';
+    }
 }
 
 function renderStateTimeline(entries) {
@@ -149,8 +292,18 @@ async function fetchLogs() {
 
         const text = await response.text();
         const lines = text.split('\n');
-        const reversed = [...lines].reverse().join('\n');
-        logContent.textContent = reversed;
+
+        // Limit how much we render in the Full log tab to keep the UI responsive.
+        const totalLines = lines.length;
+        const logSlice = totalLines > LOG_LINE_LIMIT ? lines.slice(-LOG_LINE_LIMIT) : lines;
+        const reversed = [...logSlice].reverse().join('\n');
+        const notice = totalLines > LOG_LINE_LIMIT
+            ? `(showing last ${LOG_LINE_LIMIT} of ${totalLines} lines)\n`
+            : '';
+        logContent.textContent = notice + reversed;
+
+        const powerSummary = extractPowerSummary(lines);
+        renderPowerSummary(powerSummary);
 
         const stateEntries = [];
         for (const line of lines) {
@@ -193,25 +346,90 @@ async function fetchLogs() {
 
         renderStateTimeline(entriesForView);
         const transitions = [];
+        let chargingStartTs = null;
+        let offlineStartTs = null; // when electricity disappeared
+        let lastElectricityBackTs = null; // when electricity came back
+        let lastElectricityGoneTs = null; // when electricity disappeared
+        let lastOfflineWaitTs = null; // throttle OFFLINE→WAIT entries
+        let lastWaitOfflineTs = null; // throttle WAIT→OFFLINE entries
         for (let i = 0; i < entriesForView.length; i++) {
             const current = entriesForView[i];
             const prev = entriesForView[i - 1];
             if (!prev || current.state.trim() === prev.state.trim()) continue;
             const from = prev.state.trim();
             const to = current.state.trim();
+            const nowTs = parseTimestamp(current.timestamp);
+            const forceTransition =
+                from.startsWith('Waiting 30.0s before first power check') && to === 'CHARGING';
 
-            // Skip noisy offline<->wait and wait<->charging bounces
+            // Drop offline<->wait flaps (noise from TAPO reconnects).
             const pair = new Set([from, to]);
-            const isOfflineWaitBounce = pair.has('WAIT') && pair.has('OFFLINE');
-            const isWaitChargingBounce = pair.has('WAIT') && pair.has('CHARGING');
-            if (isOfflineWaitBounce || isWaitChargingBounce) continue;
+            const isOfflineWait = pair.has('WAIT') && pair.has('OFFLINE');
+            if (!forceTransition && isOfflineWait) {
+                const deltaPrev = parseTimestamp(current.timestamp) - parseTimestamp(prev.timestamp);
+                // Ignore immediate bounce (but never skip WAIT->OFFLINE because we need outage duration)
+                if (!(from === 'WAIT' && to === 'OFFLINE') && deltaPrev >= 0 && deltaPrev < 5 * 60 * 1000) continue;
+                // Throttle OFFLINE→WAIT so we only keep one every OFFLINE_WAIT_COOLDOWN_MS (but still allow WAIT->OFFLINE)
+                if (from === 'OFFLINE' && to === 'WAIT' && lastOfflineWaitTs) {
+                    const deltaSinceLast = nowTs - parseTimestamp(lastOfflineWaitTs);
+                    if (deltaSinceLast >= 0 && deltaSinceLast < OFFLINE_WAIT_COOLDOWN_MS) {
+                        continue;
+                    }
+                }
+            }
+
+            // Skip immediate duplicate transitions (same from->to) within 2 minutes
+            if (!forceTransition) {
+                const last = transitions[transitions.length - 1];
+                if (last && last.from === from && last.to === to) {
+                    const deltaMs = parseTimestamp(current.timestamp) - parseTimestamp(last.timestamp);
+                    if (deltaMs >= 0 && deltaMs < 2 * 60 * 1000) continue;
+                }
+            }
+
+            // Track starts for duration calculations
+            if (to === 'CHARGING') {
+                chargingStartTs = current.timestamp;
+            }
+
+            let detail = current.detail;
+
+            // Custom descriptions
+            if (from === 'Waiting 30.0s before first power check' && to === 'CHARGING') {
+                detail = 'electricity back — starting charge';
+            } else if (from === 'CHARGING' && to === 'WAIT') {
+                if (chargingStartTs) {
+                    const started = parseTimestamp(chargingStartTs);
+                    const duration = nowTs - started;
+                    const durText = formatDuration(duration);
+                    detail = `finished charging${durText ? ` (time charging: ${durText})` : ''}`;
+                } else {
+                    detail = 'finished charging';
+                }
+                chargingStartTs = null;
+            } else if (from === 'OFFLINE' && to === 'WAIT') {
+                detail = 'electricity disappeared';
+                lastOfflineWaitTs = current.timestamp;
+            } else if (from === 'WAIT' && to === 'OFFLINE') {
+                // Throttle WAIT→OFFLINE noise; keep only the first in the cooldown window.
+                if (lastWaitOfflineTs) {
+                    const deltaSinceLast = nowTs - parseTimestamp(lastWaitOfflineTs);
+                    if (deltaSinceLast >= 0 && deltaSinceLast < OFFLINE_WAIT_COOLDOWN_MS) {
+                        continue;
+                    }
+                }
+                detail = 'electricity back';
+                lastElectricityBackTs = current.timestamp; // power restored
+                lastWaitOfflineTs = current.timestamp;
+            }
 
             transitions.push({
                 timestamp: current.timestamp,
                 from,
                 to,
-                detail: current.detail
+                detail
             });
+            prevTransitionTs = current.timestamp;
         }
         renderTransitions(transitions);
     } catch (error) {
@@ -219,6 +437,6 @@ async function fetchLogs() {
     }
 }
 
-setView('states');
+setView('transitions');
 setInterval(fetchLogs, 2000);
 fetchLogs();

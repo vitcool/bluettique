@@ -16,6 +16,29 @@
         </div>
     </div>
 
+    <div id="powerSummary" class="status-grid" aria-live="polite">
+        <div class="status-card">
+            <div class="label">AC Output</div>
+            <div class="value" id="acStatus">—</div>
+            <div class="meta" id="acStatusTime">Waiting for data…</div>
+        </div>
+        <div class="status-card">
+            <div class="label">Battery</div>
+            <div class="value"><span id="batteryPercent">—</span><span class="unit">%</span></div>
+            <div class="meta" id="batteryTime">Waiting for data…</div>
+        </div>
+        <div class="status-card">
+            <div class="label">Input</div>
+            <div class="value" id="inputStatus">—</div>
+            <div class="meta" id="inputDetail">Waiting for data…</div>
+        </div>
+        <div class="status-card">
+            <div class="label">Connection</div>
+            <div class="value" id="connStatus">—</div>
+            <div class="meta" id="connDetail">Waiting for data…</div>
+        </div>
+    </div>
+
     <section id="statesView" class="panel">
         <div class="latest">
             <div>
