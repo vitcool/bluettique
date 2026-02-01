@@ -16,8 +16,8 @@ const inputStatus = document.getElementById('inputStatus');
 const inputDetail = document.getElementById('inputDetail');
 const connStatus = document.getElementById('connStatus');
 const connDetail = document.getElementById('connDetail');
+const acOutputDetail = document.getElementById('acOutputDetail');
 const LOG_LINE_LIMIT = 800; // cap full-log view for performance
-const OFFLINE_WAIT_COOLDOWN_MS = 6 * 60 * 60 * 1000; // show OFFLINE→WAIT at most once every 6h
 const urlParams = new URLSearchParams(window.location.search);
 const CONNECTION_WINDOW_MIN = (() => {
     const val = Number(urlParams.get('conn_window_min'));
@@ -25,6 +25,12 @@ const CONNECTION_WINDOW_MIN = (() => {
     return 5; // default freshness window in minutes
 })();
 const CONNECTION_WINDOW_MS = CONNECTION_WINDOW_MIN * 60_000;
+const OFFLINE_WAIT_COOLDOWN_MIN = (() => {
+    const val = Number(urlParams.get('offline_cooldown_min'));
+    if (Number.isFinite(val) && val >= 0) return val;
+    return 10; // default throttle window in minutes (was 360)
+})();
+const OFFLINE_WAIT_COOLDOWN_MS = OFFLINE_WAIT_COOLDOWN_MIN * 60_000;
 
 const stateRegex = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) - [A-Z]+ - Charging: ([^-]+?)(?: - (.*))?$/;
 const tsRegex = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3})/;
@@ -140,6 +146,8 @@ function extractPowerSummary(lines) {
         dcInputTs: null,
         acInputPower: null,
         acInputTs: null,
+        acOutputPower: null,
+        acOutputPowerTs: null,
         lastMessageTs: null,
         forcedOfflineTs: null,
         forcedAcOffTs: null
@@ -152,6 +160,14 @@ function extractPowerSummary(lines) {
 
         if (!summary.lastMessageTs && ts && line.includes('Received message:')) {
             summary.lastMessageTs = ts;
+        }
+
+        if (summary.acOutputPower === null) {
+            const match = line.match(/ac_output_power\s+(-?[\d.]+)/i);
+            if (match) {
+                summary.acOutputPower = parseFloat(match[1]);
+                summary.acOutputPowerTs = ts;
+            }
         }
 
         if (!summary.forcedAcOffTs && ts && line.includes('Bluetti: Turning AC device OFF')) {
@@ -204,7 +220,8 @@ function extractPowerSummary(lines) {
             summary.acOutputOn !== null &&
             summary.batteryPercent !== null &&
             summary.dcInputPower !== null &&
-            summary.acInputPower !== null
+            summary.acInputPower !== null &&
+            summary.acOutputPower !== null
         ) {
             break;
         }
@@ -219,6 +236,16 @@ function renderPowerSummary(summary) {
     acStatus.classList.toggle('on', acVal === 'ON');
     acStatus.classList.toggle('off', acVal === 'OFF');
     acStatusTime.textContent = formatWithRelative(summary.acOutputTs);
+    const acPower = summary.acOutputPower;
+    const acPowerTs = summary.acOutputPowerTs || summary.acOutputTs;
+    if (acOutputDetail) {
+        if (typeof acPower === 'number' && !isNaN(acPower)) {
+            const tsText = acPowerTs ? formatWithRelative(acPowerTs) : '';
+            acOutputDetail.textContent = `${Math.round(acPower)} W${tsText ? ' — ' + tsText : ''}`;
+        } else {
+            acOutputDetail.textContent = 'Waiting for power…';
+        }
+    }
 
     const pct = summary.batteryPercent;
     batteryPercentEl.textContent = typeof pct === 'number' && !isNaN(pct) ? Math.round(pct) : '—';
@@ -388,6 +415,7 @@ async function fetchLogs() {
         let lastElectricityGoneTs = null; // when electricity disappeared
         let lastOfflineWaitTs = null; // throttle OFFLINE→WAIT entries
         let lastWaitOfflineTs = null; // throttle WAIT→OFFLINE entries
+        let offlineSeriesActive = false; // suppress repeat WAIT->OFFLINE within the same outage
         for (let i = 0; i < entriesForView.length; i++) {
             const current = entriesForView[i];
             const prev = entriesForView[i - 1];
@@ -398,20 +426,26 @@ async function fetchLogs() {
             const forceTransition =
                 from.startsWith('Waiting 30.0s before first power check') && to === 'CHARGING';
 
-            // Drop offline<->wait flaps (noise from TAPO reconnects).
+            // Manage OFFLINE<->WAIT transitions: keep only the first WAIT->OFFLINE in a series; drop all OFFLINE->WAIT and further WAIT->OFFLINE until state leaves OFFLINE/WAIT.
             const pair = new Set([from, to]);
             const isOfflineWait = pair.has('WAIT') && pair.has('OFFLINE');
             if (!forceTransition && isOfflineWait) {
-                const deltaPrev = parseTimestamp(current.timestamp) - parseTimestamp(prev.timestamp);
-                // Ignore immediate bounce (but never skip WAIT->OFFLINE because we need outage duration)
-                if (!(from === 'WAIT' && to === 'OFFLINE') && deltaPrev >= 0 && deltaPrev < 5 * 60 * 1000) continue;
-                // Throttle OFFLINE→WAIT so we only keep one every OFFLINE_WAIT_COOLDOWN_MS (but still allow WAIT->OFFLINE)
-                if (from === 'OFFLINE' && to === 'WAIT' && lastOfflineWaitTs) {
-                    const deltaSinceLast = nowTs - parseTimestamp(lastOfflineWaitTs);
-                    if (deltaSinceLast >= 0 && deltaSinceLast < OFFLINE_WAIT_COOLDOWN_MS) {
-                        continue;
+                if (from === 'WAIT' && to === 'OFFLINE') {
+                    if (offlineSeriesActive) continue; // already recorded this outage
+                    if (lastWaitOfflineTs) {
+                        const deltaSinceLast = nowTs - parseTimestamp(lastWaitOfflineTs);
+                        if (deltaSinceLast >= 0 && deltaSinceLast < OFFLINE_WAIT_COOLDOWN_MS) continue;
                     }
+                    lastWaitOfflineTs = current.timestamp;
+                    offlineSeriesActive = true; // mark series open
+                } else if (from === 'OFFLINE' && to === 'WAIT') {
+                    continue; // drop recoveries to reduce noise
                 }
+            }
+
+            // Leaving OFFLINE/WAIT resets the series flag
+            if (!pair.has('OFFLINE')) {
+                offlineSeriesActive = false;
             }
 
             // Skip immediate duplicate transitions (same from->to) within 2 minutes
@@ -444,19 +478,9 @@ async function fetchLogs() {
                 }
                 chargingStartTs = null;
             } else if (from === 'OFFLINE' && to === 'WAIT') {
-                detail = 'electricity disappeared';
-                lastOfflineWaitTs = current.timestamp;
+                continue; // suppressed
             } else if (from === 'WAIT' && to === 'OFFLINE') {
-                // Throttle WAIT→OFFLINE noise; keep only the first in the cooldown window.
-                if (lastWaitOfflineTs) {
-                    const deltaSinceLast = nowTs - parseTimestamp(lastWaitOfflineTs);
-                    if (deltaSinceLast >= 0 && deltaSinceLast < OFFLINE_WAIT_COOLDOWN_MS) {
-                        continue;
-                    }
-                }
-                detail = 'electricity back';
-                lastElectricityBackTs = current.timestamp; // power restored
-                lastWaitOfflineTs = current.timestamp;
+                detail = 'electricity disappeared';
             }
 
             transitions.push({
