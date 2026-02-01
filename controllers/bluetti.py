@@ -15,8 +15,13 @@ class BluettiController:
 
     async def initialize(self):
         if self.connection_set:
-            logging.info("BluettiController already connected; skipping initialize.")
-            return
+            if self.bluetti.device_connected:
+                logging.info("BluettiController already connected; skipping initialize.")
+                return
+            logging.info(
+                "BluettiController flagged connected but device is not; attempting reconnection."
+            )
+            self.connection_set = False
 
         logging.info("BluettiController initializing.")
         for attempt in range(CONNECTION_RETRY_ATTEMPTS):
@@ -65,3 +70,7 @@ class BluettiController:
         self.bluetti.stop_client()
         self.bluetti.stop_broker()
         self.bluetti.disconnect_device()
+        self.connection_set = False
+        self.turned_on = False
+        self.ac_turned_on = False
+        self.dc_turned_on = False

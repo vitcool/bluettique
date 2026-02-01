@@ -32,8 +32,17 @@ class WaitPowerState(ChargingState):
                 return
 
         if not is_online:
-            handler.offline_seen_in_wait = True
-            logging.info("Charging: TAPO offline; waiting to come online")
+            if not handler.offline_seen_in_wait:
+                handler.offline_seen_in_wait = True
+                logging.info("Charging: TAPO offline; triggering Bluetti AC keep-alive")
+                try:
+                    await handler.bluetti_controller.initialize()
+                    handler.bluetti_controller.turn_ac("ON")
+                except Exception:
+                    logging.warning("Charging: Failed to trigger Bluetti AC keep-alive", exc_info=True)
+                handler.schedule_offline_recovery_check()
+            else:
+                logging.info("Charging: TAPO offline; waiting to come online")
             await asyncio.sleep(handler.config.check_interval_sec)
             return
 
@@ -204,6 +213,10 @@ class StopChargingState(ChargingState):
             await handler.tapo_controller.stop_charging()
         except Exception:
             logging.warning("Charging: Failed to stop charging cleanly", exc_info=True)
+        try:
+            handler.bluetti_controller.stop()
+        except Exception:
+            logging.warning("Charging: Failed to stop Bluetti controller cleanly", exc_info=True)
 
         handler.low_power_counter = 0
         handler.socket_on_at = None
@@ -232,6 +245,7 @@ class ChargingStateHandler:
         self.stable_checks_remaining = self.config.stable_power_checks
         self.offline_seen_in_wait = False
         self.first_launch = True
+        self.offline_recovery_task: Optional[asyncio.Task] = None
 
     def set_state(self, state: ChargingState, reason: str | None = None):
         logging.info(
@@ -244,6 +258,31 @@ class ChargingStateHandler:
         if isinstance(state, WaitPowerState):
             # Require a fresh offline->online observation each time we re-enter WAIT_POWER
             self.offline_seen_in_wait = False
+        else:
+            if self.offline_recovery_task and not self.offline_recovery_task.done():
+                self.offline_recovery_task.cancel()
+                self.offline_recovery_task = None
 
     async def handle_state(self):
         await self.state.handle(self)
+
+    def schedule_offline_recovery_check(self):
+        if self.offline_recovery_task and not self.offline_recovery_task.done():
+            self.offline_recovery_task.cancel()
+
+        async def _delayed_check():
+            try:
+                await asyncio.sleep(300)  # 5 minutes
+                status = self.bluetti_controller.get_status()
+                ac_on = status.get("ac_output_on")
+                ac_power = status.get("ac_output_power")
+                if ac_on and (ac_power is None or float(ac_power) == 0):
+                    logging.info("Charging: Offline recovery disabling AC output and stopping Bluetti")
+                    self.bluetti_controller.turn_ac("OFF")
+                    self.bluetti_controller.stop()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logging.warning("Charging: Offline recovery check failed", exc_info=True)
+
+        self.offline_recovery_task = asyncio.create_task(_delayed_check())

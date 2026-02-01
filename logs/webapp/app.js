@@ -18,6 +18,13 @@ const connStatus = document.getElementById('connStatus');
 const connDetail = document.getElementById('connDetail');
 const LOG_LINE_LIMIT = 800; // cap full-log view for performance
 const OFFLINE_WAIT_COOLDOWN_MS = 6 * 60 * 60 * 1000; // show OFFLINE→WAIT at most once every 6h
+const urlParams = new URLSearchParams(window.location.search);
+const CONNECTION_WINDOW_MIN = (() => {
+    const val = Number(urlParams.get('conn_window_min'));
+    if (Number.isFinite(val) && val > 0) return val;
+    return 5; // default freshness window in minutes
+})();
+const CONNECTION_WINDOW_MS = CONNECTION_WINDOW_MIN * 60_000;
 
 const stateRegex = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) - [A-Z]+ - Charging: ([^-]+?)(?: - (.*))?$/;
 const tsRegex = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3})/;
@@ -133,7 +140,9 @@ function extractPowerSummary(lines) {
         dcInputTs: null,
         acInputPower: null,
         acInputTs: null,
-        lastMessageTs: null
+        lastMessageTs: null,
+        forcedOfflineTs: null,
+        forcedAcOffTs: null
     };
 
     for (let i = lines.length - 1; i >= 0; i--) {
@@ -143,6 +152,20 @@ function extractPowerSummary(lines) {
 
         if (!summary.lastMessageTs && ts && line.includes('Received message:')) {
             summary.lastMessageTs = ts;
+        }
+
+        if (!summary.forcedAcOffTs && ts && line.includes('Bluetti: Turning AC device OFF')) {
+            summary.acOutputOn = 'OFF';
+            summary.acOutputTs = ts;
+            summary.forcedAcOffTs = ts;
+        }
+
+        if (!summary.forcedOfflineTs && ts && line.includes('Bluetti: Stopping MQTT client and broker')) {
+            summary.forcedOfflineTs = ts;
+            if (!summary.forcedAcOffTs) {
+                summary.acOutputOn = 'OFF';
+                summary.acOutputTs = summary.acOutputTs || ts;
+            }
         }
 
         if (summary.acOutputOn === null) {
@@ -216,13 +239,26 @@ function renderPowerSummary(summary) {
     inputDetail.textContent = parts.length ? `${parts.join(' • ')} — ${tsText}` : tsText;
 
     const lastMsg = summary.lastMessageTs;
-    if (lastMsg) {
-        const ageMs = Date.now() - parseTimestamp(lastMsg).getTime();
-        const online = ageMs < 60_000; // 60s freshness window
+    const forcedOfflineTs = summary.forcedOfflineTs;
+    const lastActivityTs = pickLatestTimestamp([lastMsg, forcedOfflineTs]);
+
+    if (lastActivityTs) {
+        const lastActivityAge = Date.now() - parseTimestamp(lastActivityTs).getTime();
+        const onlineByTraffic = lastMsg && (Date.now() - parseTimestamp(lastMsg).getTime()) < CONNECTION_WINDOW_MS;
+        const forcedOfflineRecent = forcedOfflineTs && forcedOfflineTs === lastActivityTs;
+        const online = onlineByTraffic && !forcedOfflineRecent;
+
         connStatus.textContent = online ? 'ONLINE' : 'OFFLINE';
         connStatus.classList.toggle('on', online);
         connStatus.classList.toggle('off', !online);
-        connDetail.textContent = `Last message ${formatWithRelative(lastMsg)}`;
+
+        if (forcedOfflineRecent) {
+            connDetail.textContent = `Last activity ${formatWithRelative(lastActivityTs)} (broker stopped)`;
+        } else if (lastMsg) {
+            connDetail.textContent = `Last message ${formatWithRelative(lastMsg)} (window ${CONNECTION_WINDOW_MIN}m)`;
+        } else {
+            connDetail.textContent = `Last activity ${formatWithRelative(lastActivityTs)}`;
+        }
     } else {
         connStatus.textContent = '—';
         connDetail.textContent = 'Waiting for data…';
