@@ -276,7 +276,7 @@ class BoilerScheduler:
         self._persist_state(now)
 
         if self.state == BoilerState.RUNNING and active:
-            next_sleep = min(self.config.poll_sec, (end - now).total_seconds(), 60)
+            next_sleep = min(self.config.poll_sec, (end - now).total_seconds())
             self.logger.info(
                 "Boiler: Running; remaining %.0fs, next check in %ss", self.remaining_sec, next_sleep
             )

@@ -213,10 +213,6 @@ class StopChargingState(ChargingState):
             await handler.tapo_controller.stop_charging()
         except Exception:
             logging.warning("Charging: Failed to stop charging cleanly", exc_info=True)
-        try:
-            handler.bluetti_controller.stop()
-        except Exception:
-            logging.warning("Charging: Failed to stop Bluetti controller cleanly", exc_info=True)
 
         handler.low_power_counter = 0
         handler.socket_on_at = None
@@ -272,14 +268,35 @@ class ChargingStateHandler:
 
         async def _delayed_check():
             try:
-                await asyncio.sleep(300)  # 5 minutes
-                status = self.bluetti_controller.get_status()
-                ac_on = status.get("ac_output_on")
-                ac_power = status.get("ac_output_power")
-                if ac_on and (ac_power is None or float(ac_power) == 0):
-                    logging.info("Charging: Offline recovery disabling AC output and stopping Bluetti")
-                    self.bluetti_controller.turn_ac("OFF")
-                    self.bluetti_controller.stop()
+                poll_interval = self.config.stable_power_interval_sec
+                zero_duration = 0.0
+
+                while True:
+                    await asyncio.sleep(poll_interval)
+                    status = self.bluetti_controller.get_status()
+                    ac_on = status.get("ac_output_on")
+                    ac_power = status.get("ac_output_power")
+
+                    if not ac_on:
+                        zero_duration = 0.0
+                        continue
+
+                    try:
+                        power_val = float(ac_power) if ac_power is not None else 0.0
+                    except (TypeError, ValueError):
+                        power_val = 0.0
+
+                    if power_val <= 0.0:
+                        zero_duration += poll_interval
+                        if zero_duration >= 300:
+                            logging.info(
+                                "Charging: Offline recovery turning AC off after %.0fs at ~0W draw",
+                                zero_duration,
+                            )
+                            self.bluetti_controller.turn_ac("OFF")
+                            zero_duration = 0.0
+                    else:
+                        zero_duration = 0.0
             except asyncio.CancelledError:
                 raise
             except Exception:
