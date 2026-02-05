@@ -3,26 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Logs Viewer</title>
+    <title>Energy Monitor</title>
+    <link rel="icon" type="image/x-icon" href="favicon.ico?v=1">
+    <link rel="shortcut icon" type="image/x-icon" href="favicon.ico?v=1">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="topbar">
-        <h1>Monitoring</h1>
-        <div class="view-toggle" aria-label="Toggle between views">
-            <button type="button" data-view="status" class="mobile-only">Status</button>
-            <button type="button" data-view="states">States</button>
-            <button type="button" data-view="transitions">Transitions</button>
-            <button type="button" data-view="log">Charging log</button>
-            <button type="button" data-view="boiler">Boiler log</button>
-        </div>
-    </div>
-
     <section id="statusView" class="panel">
         <div id="powerSummary" class="status-grid" aria-live="polite">
-        <div class="status-card">
-            <div class="label">AC Output</div>
-            <div class="value" id="acStatus">—</div>
+            <div class="status-card">
+                <div class="label">AC Output</div>
+                <div class="value" id="acStatus">—</div>
             <div class="meta" id="acStatusTime">Waiting for data…</div>
             <div class="meta" id="acOutputDetail">Waiting for power…</div>
         </div>
@@ -50,14 +41,17 @@
         </div>
     </section>
 
-    <section id="statesView" class="panel hidden">
-        <div class="latest">
-            <div>
-                <div class="label" aria-label="Most recent state">Latest state</div>
-                <div id="latestState" class="state">—</div>
-            </div>
-            <div id="latestTime" class="time">Waiting for data…</div>
+    <div class="topbar">
+        <div class="view-toggle" aria-label="Toggle between views">
+            <button type="button" data-view="status" class="mobile-only">Status</button>
+            <button type="button" data-view="states">States</button>
+            <button type="button" data-view="transitions">Transitions</button>
+            <button type="button" data-view="log">Charging log</button>
+            <button type="button" data-view="boiler">Boiler log</button>
         </div>
+    </div>
+
+    <section id="statesView" class="panel hidden">
         <div id="stateTimeline" class="timeline" aria-live="polite">
             <div class="state-row">
                 <div class="state-title">Listening for state changes…</div>
@@ -68,13 +62,6 @@
     </section>
 
     <section id="transitionsView" class="panel hidden">
-        <div class="latest">
-            <div>
-                <div class="label">Recent transitions</div>
-                <div class="state">State changes only</div>
-            </div>
-            <div class="time" id="transitionCount">—</div>
-        </div>
         <div id="transitionsTimeline" class="timeline" aria-live="polite">
             <div class="state-row">
                 <div class="state-title">Waiting for first transition…</div>
@@ -89,13 +76,6 @@
     </section>
 
     <section id="boilerView" class="panel hidden">
-        <div class="latest">
-            <div>
-                <div class="label">Boiler log</div>
-                <div class="state" id="boilerStatus">Waiting for data…</div>
-            </div>
-            <div class="time" id="boilerMeta">logs/boiler_logs/boiler.log</div>
-        </div>
         <pre id="boilerLogContent">Loading boiler logs...</pre>
     </section>
 

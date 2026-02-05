@@ -1,9 +1,6 @@
 const logContent = document.getElementById('logContent');
 const stateTimeline = document.getElementById('stateTimeline');
-const latestState = document.getElementById('latestState');
-const latestTime = document.getElementById('latestTime');
 const transitionsTimeline = document.getElementById('transitionsTimeline');
-const transitionCount = document.getElementById('transitionCount');
 const viewButtons = document.querySelectorAll('.view-toggle button');
 const statusView = document.getElementById('statusView');
 const statesView = document.getElementById('statesView');
@@ -11,8 +8,6 @@ const transitionsView = document.getElementById('transitionsView');
 const logView = document.getElementById('logView');
 const boilerView = document.getElementById('boilerView');
 const boilerLogContent = document.getElementById('boilerLogContent');
-const boilerStatus = document.getElementById('boilerStatus');
-const boilerMeta = document.getElementById('boilerMeta');
 const boilerCard = document.getElementById('boilerCard');
 const boilerCardValue = document.getElementById('boilerCardValue');
 const boilerCardMeta = document.getElementById('boilerCardMeta');
@@ -324,15 +319,8 @@ function renderPowerSummary(summary) {
 function renderStateTimeline(entries) {
     if (!entries.length) {
         stateTimeline.innerHTML = '<div class="state-row"><div class="state-title">No Charging entries yet</div><div class="meta"></div><div class="detail">Waiting for the first state transition…</div></div>';
-        latestState.textContent = '—';
-        latestTime.textContent = 'Waiting for data…';
         return;
     }
-
-    const latest = entries[entries.length - 1];
-    latestState.textContent = latest.state.trim();
-    const rel = relativeTime(latest.timestamp);
-    latestTime.textContent = rel ? `${formatDate(latest.timestamp)} (${rel})` : formatDate(latest.timestamp);
 
     const recent = entries.slice().reverse(); // newest first
     stateTimeline.innerHTML = recent.map(item => {
@@ -353,11 +341,9 @@ function renderStateTimeline(entries) {
 function renderTransitions(entries) {
     if (!entries.length) {
         transitionsTimeline.innerHTML = '<div class="state-row"><div class="state-title">No transitions yet</div><div class="meta"></div><div class="detail">Will show only when the state value changes</div></div>';
-        transitionCount.textContent = '0';
         return;
     }
 
-    transitionCount.textContent = `${entries.length} total`;
     const recent = entries.slice().reverse(); // newest first
     transitionsTimeline.innerHTML = recent.map(item => {
         const friendly = formatDate(item.timestamp);
@@ -530,7 +516,6 @@ async function fetchBoilerLogs() {
     try {
         const response = await fetch('boiler.log', { cache: 'no-cache' });
         if (!response.ok) {
-            boilerStatus.textContent = `Fetch failed (${response.status})`;
             return;
         }
         const text = await response.text();
@@ -542,10 +527,7 @@ async function fetchBoilerLogs() {
             ? `(showing last ${BOILER_LOG_LIMIT} of ${totalLines} lines)\n`
             : '';
         boilerLogContent.textContent = notice + reversed;
-        boilerStatus.textContent = totalLines ? 'Latest entries' : 'No boiler logs yet';
-        boilerMeta.textContent = 'logs/boiler_logs/boiler.log';
     } catch (error) {
-        boilerStatus.textContent = 'Error reading boiler log';
         console.error('Error fetching boiler logs:', error);
     }
 }
