@@ -5,6 +5,7 @@ const latestTime = document.getElementById('latestTime');
 const transitionsTimeline = document.getElementById('transitionsTimeline');
 const transitionCount = document.getElementById('transitionCount');
 const viewButtons = document.querySelectorAll('.view-toggle button');
+const statusView = document.getElementById('statusView');
 const statesView = document.getElementById('statesView');
 const transitionsView = document.getElementById('transitionsView');
 const logView = document.getElementById('logView');
@@ -41,17 +42,24 @@ const OFFLINE_WAIT_COOLDOWN_MIN = (() => {
 })();
 const OFFLINE_WAIT_COOLDOWN_MS = OFFLINE_WAIT_COOLDOWN_MIN * 60_000;
 const mobileQuery = window.matchMedia('(max-width: 900px)');
-let currentView = 'transitions';
+let currentView = mobileQuery.matches ? 'status' : 'transitions';
 
 const stateRegex = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) - [A-Z]+ - Charging: ([^-]+?)(?: - (.*))?$/;
 const tsRegex = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3})/;
 
 function setView(view) {
     currentView = view;
+    const mobile = mobileQuery.matches;
+    const showStatus = view === 'status';
     const showStates = view === 'states';
     const showTransitions = view === 'transitions';
     const showLog = view === 'log';
     const showBoiler = view === 'boiler';
+    if (mobile) {
+        statusView.classList.toggle('hidden', !showStatus);
+    } else {
+        statusView.classList.remove('hidden');
+    }
     statesView.classList.toggle('hidden', !showStates);
     transitionsView.classList.toggle('hidden', !showTransitions);
     logView.classList.toggle('hidden', !showLog);
@@ -62,7 +70,7 @@ function setView(view) {
 viewButtons.forEach(btn => {
     btn.addEventListener('click', () => setView(btn.dataset.view));
 });
-// mobileQuery listener removed
+mobileQuery.addEventListener('change', () => setView(currentView));
 
 function formatDate(ts) {
     const iso = ts.replace(' ', 'T').replace(',', '.');
@@ -581,7 +589,7 @@ async function fetchBoilerState() {
 }
 
 // Default to transitions view on load
-setView('transitions');
+setView(mobileQuery.matches ? 'status' : 'transitions');
 setInterval(fetchLogs, 2000);
 fetchLogs();
 setInterval(fetchBoilerLogs, 5000);

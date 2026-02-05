@@ -10,6 +10,7 @@
     <div class="topbar">
         <h1>Monitoring</h1>
         <div class="view-toggle" aria-label="Toggle between views">
+            <button type="button" data-view="status" class="mobile-only">Status</button>
             <button type="button" data-view="states">States</button>
             <button type="button" data-view="transitions">Transitions</button>
             <button type="button" data-view="log">Charging log</button>
@@ -17,7 +18,8 @@
         </div>
     </div>
 
-    <div id="powerSummary" class="status-grid" aria-live="polite">
+    <section id="statusView" class="panel">
+        <div id="powerSummary" class="status-grid" aria-live="polite">
         <div class="status-card">
             <div class="label">AC Output</div>
             <div class="value" id="acStatus">—</div>
@@ -45,7 +47,8 @@
             <div class="meta" id="boilerCardMeta">Waiting for data…</div>
             <div class="meta" id="boilerCardMeta2"></div>
         </div>
-    </div>
+        </div>
+    </section>
 
     <section id="statesView" class="panel hidden">
         <div class="latest">

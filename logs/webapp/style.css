@@ -59,6 +59,8 @@ h1 {
     background: var(--accent-muted);
 }
 
+.mobile-only { display: none; }
+
 .status-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
@@ -210,5 +212,5 @@ pre {
 }
 
 @media (max-width: 1024px) {
-    /* removed mobile-only tab behavior */
+    .mobile-only { display: inline-block; }
 }
