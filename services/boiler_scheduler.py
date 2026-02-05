@@ -86,6 +86,7 @@ class BoilerScheduler:
         self.remaining_sec: float = float(self.config.total_run_sec)
         self.state: str = BoilerState.WAITING_WINDOW
         self.last_update_monotonic: float = self.clock.monotonic()
+        self.completed_today: bool = False
 
         self._load_persisted_state()
 
@@ -126,6 +127,7 @@ class BoilerScheduler:
         self.remaining_sec = float(self.config.total_run_sec)
         self.state = BoilerState.WAITING_WINDOW
         self.last_update_monotonic = self.clock.monotonic()
+        self.completed_today = False
         self._persist_state(now)
         self.logger.info("Boiler: Reset state for new day %s (remaining %.0fs)", self.current_date, self.remaining_sec)
 
@@ -144,20 +146,41 @@ class BoilerScheduler:
         now = self.clock.now()
         today = now.date().isoformat()
         start, end = self._window_bounds(now)
-        if data and data.get("date") == today and start <= now < end:
+        if data and data.get("date") == today:
             self.current_date = today
             self.remaining_sec = float(data.get("remaining_sec", self.config.total_run_sec))
             self.state = data.get("last_state", BoilerState.WAITING_POWER)
-            self.logger.info("Boiler: Resuming persisted state %s remaining %.0fs", self.state, self.remaining_sec)
+            self.completed_today = bool(data.get("completed", False)) or (
+                self.state == BoilerState.COMPLETED or self.remaining_sec <= 0
+            )
+            self.logger.info(
+                "Boiler: Resuming persisted state %s remaining %.0fs (completed=%s)",
+                self.state,
+                self.remaining_sec,
+                self.completed_today,
+            )
+
+            # If we're already past today's window, keep the completion flag but avoid resetting to a new day.
+            if now >= end:
+                if not self.completed_today:
+                    self.state = BoilerState.EXPIRED
+                    self.logger.info("Boiler: Window passed without completion; marking expired")
+                self._persist_state(now)
         else:
             self._reset_for_today(now)
 
     def _persist_state(self, now: datetime):
+        completed = self.completed_today or self.state == BoilerState.COMPLETED or self.remaining_sec <= 0
+        self.completed_today = completed
         state = {
             "date": self.current_date or now.date().isoformat(),
             "remaining_sec": round(self.remaining_sec, 2),
             "last_state": self.state,
             "last_update_ts": now.isoformat(),
+            "completed": completed,
+            "window_start": self.config.window_start.strftime("%H:%M"),
+            "window_end": self.config.window_end.strftime("%H:%M"),
+            "total_run_sec": self.config.total_run_sec,
         }
         _ensure_dir(self.config.state_file)
         try:

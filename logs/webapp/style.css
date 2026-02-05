@@ -105,6 +105,25 @@ h1 {
     font-size: 0.9rem;
 }
 
+.boiler-card {
+    min-width: 240px;
+    background: linear-gradient(135deg, rgba(248, 113, 113, 0.08), rgba(15, 23, 42, 0.9));
+    border-color: rgba(248, 113, 113, 0.4);
+}
+
+.boiler-card.ok {
+    background: linear-gradient(135deg, rgba(52, 211, 153, 0.10), rgba(15, 23, 42, 0.9));
+    border-color: rgba(52, 211, 153, 0.5);
+}
+
+.boiler-card .value {
+    color: var(--danger);
+}
+
+.boiler-card.ok .value {
+    color: var(--success);
+}
+
 .panel {
     background: var(--panel);
     border: 1px solid var(--border);
@@ -188,4 +207,8 @@ pre {
     .latest .time { text-align: left; }
     .timeline { max-height: none; }
     .status-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 1024px) {
+    /* removed mobile-only tab behavior */
 }

@@ -12,6 +12,10 @@ const boilerView = document.getElementById('boilerView');
 const boilerLogContent = document.getElementById('boilerLogContent');
 const boilerStatus = document.getElementById('boilerStatus');
 const boilerMeta = document.getElementById('boilerMeta');
+const boilerCard = document.getElementById('boilerCard');
+const boilerCardValue = document.getElementById('boilerCardValue');
+const boilerCardMeta = document.getElementById('boilerCardMeta');
+const boilerCardMeta2 = document.getElementById('boilerCardMeta2');
 const acStatus = document.getElementById('acStatus');
 const acStatusTime = document.getElementById('acStatusTime');
 const batteryPercentEl = document.getElementById('batteryPercent');
@@ -36,11 +40,14 @@ const OFFLINE_WAIT_COOLDOWN_MIN = (() => {
     return 10; // default throttle window in minutes (was 360)
 })();
 const OFFLINE_WAIT_COOLDOWN_MS = OFFLINE_WAIT_COOLDOWN_MIN * 60_000;
+const mobileQuery = window.matchMedia('(max-width: 900px)');
+let currentView = 'transitions';
 
 const stateRegex = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) - [A-Z]+ - Charging: ([^-]+?)(?: - (.*))?$/;
 const tsRegex = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3})/;
 
 function setView(view) {
+    currentView = view;
     const showStates = view === 'states';
     const showTransitions = view === 'transitions';
     const showLog = view === 'log';
@@ -55,6 +62,7 @@ function setView(view) {
 viewButtons.forEach(btn => {
     btn.addEventListener('click', () => setView(btn.dataset.view));
 });
+// mobileQuery listener removed
 
 function formatDate(ts) {
     const iso = ts.replace(' ', 'T').replace(',', '.');
@@ -91,6 +99,11 @@ function formatDuration(ms) {
     const hours = Math.floor(totalMinutes / 60);
     const mins = totalMinutes % 60;
     return `${hours.toString().padStart(2, '0')}h ${mins.toString().padStart(2, '0')}m`;
+}
+
+function formatSeconds(sec) {
+    if (!Number.isFinite(sec) || sec < 0) return '';
+    return formatDuration(sec * 1000);
 }
 
 function normalizeState(raw) {
@@ -529,8 +542,49 @@ async function fetchBoilerLogs() {
     }
 }
 
+async function fetchBoilerState() {
+    if (!boilerCard || !boilerCardValue || !boilerCardMeta) return;
+    try {
+        const response = await fetch('boiler_state.json', { cache: 'no-cache' });
+        if (!response.ok) {
+            boilerCardValue.textContent = `Unavailable (${response.status})`;
+            boilerCardMeta.textContent = 'Boiler state file not reachable';
+            boilerCardMeta2.textContent = '';
+            boilerCard.className = 'status-card boiler-card';
+            return;
+        }
+        const data = await response.json();
+        const completed = Boolean(data.completed);
+        const hasWindow = Boolean(data.window_start && data.window_end);
+        const windowText = hasWindow ? `${data.window_start}\u2013${data.window_end}` : '';
+        const totalText = formatSeconds(data.total_run_sec) || 'configured quota';
+        const remainingText = formatSeconds(data.remaining_sec);
+        const updated = data.last_update_ts ? formatWithRelative(data.last_update_ts) : 'n/a';
+        const dateLabel = data.date || 'today';
+
+        const mainText = completed ? 'COMPLETE' : 'INCOMPLETE';
+        const meta1 = completed
+            ? `${dateLabel} • Ran full window${hasWindow ? ` ${windowText}` : ''}`
+            : `${dateLabel} • Remaining ${remainingText || 'unknown'}${hasWindow ? ` (${windowText})` : ''}`;
+        boilerCardValue.textContent = mainText;
+        boilerCardValue.className = `value ${completed ? 'on' : 'off'}`;
+        boilerCardMeta.textContent = meta1;
+        boilerCardMeta2.textContent = '';
+        boilerCard.className = `status-card boiler-card ${completed ? 'ok' : ''}`;
+    } catch (error) {
+        boilerCardValue.textContent = 'Unavailable';
+        boilerCardMeta.textContent = 'Error reading boiler state';
+        boilerCardMeta2.textContent = '';
+        boilerCard.className = 'status-card boiler-card';
+        console.error('Error fetching boiler state:', error);
+    }
+}
+
+// Default to transitions view on load
 setView('transitions');
 setInterval(fetchLogs, 2000);
 fetchLogs();
 setInterval(fetchBoilerLogs, 5000);
 fetchBoilerLogs();
+setInterval(fetchBoilerState, 15000);
+fetchBoilerState();
