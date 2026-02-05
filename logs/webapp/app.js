@@ -109,6 +109,14 @@ function formatSeconds(sec) {
     return formatDuration(sec * 1000);
 }
 
+function formatDateOnly(dateStr) {
+    if (!dateStr) return '';
+    const parts = dateStr.split('-').map(Number);
+    if (parts.length !== 3 || parts.some(n => Number.isNaN(n))) return dateStr;
+    const d = new Date(parts[0], parts[1] - 1, parts[2]);
+    return isNaN(d.getTime()) ? dateStr : d.toLocaleDateString();
+}
+
 function normalizeState(raw) {
     const trimmed = raw.trim();
     const upper = trimmed.toUpperCase();
@@ -550,7 +558,7 @@ async function fetchBoilerState() {
         const totalText = formatSeconds(data.total_run_sec) || 'configured quota';
         const remainingText = formatSeconds(data.remaining_sec);
         const updated = data.last_update_ts ? formatWithRelative(data.last_update_ts) : 'n/a';
-        const dateLabel = data.date || 'today';
+        const dateLabel = data.date ? formatDateOnly(data.date) : 'today';
 
         const mainText = completed ? 'COMPLETE' : 'INCOMPLETE';
         const meta1 = completed
