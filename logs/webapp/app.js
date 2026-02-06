@@ -41,6 +41,7 @@ let currentView = mobileQuery.matches ? 'status' : 'transitions';
 
 const stateRegex = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) - [A-Z]+ - Charging: ([^-]+?)(?: - (.*))?$/;
 const tsRegex = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3})/;
+let boilerRunInterval = null;
 
 function setView(view) {
     currentView = view;
@@ -115,6 +116,56 @@ function formatDateOnly(dateStr) {
     if (parts.length !== 3 || parts.some(n => Number.isNaN(n))) return dateStr;
     const d = new Date(parts[0], parts[1] - 1, parts[2]);
     return isNaN(d.getTime()) ? dateStr : d.toLocaleDateString();
+}
+
+function formatTimeOnly(timeStr) {
+    if (!timeStr) return '';
+    return timeStr.slice(0, 5);
+}
+
+function parseBoilerRunIntervals(lines) {
+    const lineRegex = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2}),\d{3} - \w+ - (.*)$/;
+    const runningRegex = /Boiler: (?:State transition \w+ -> Running|Running; remaining)/;
+    const completedRegex = /Boiler: State transition \w+ -> Completed/;
+    const perDate = new Map();
+    let lastDate = null;
+
+    for (const line of lines) {
+        const match = lineRegex.exec(line);
+        if (!match) continue;
+        const date = match[1];
+        const time = match[2];
+        const msg = match[3];
+        lastDate = date;
+
+        if (!perDate.has(date)) {
+            perDate.set(date, { intervals: [], openStart: null });
+        }
+        const entry = perDate.get(date);
+
+        if (runningRegex.test(msg)) {
+            if (!entry.openStart) entry.openStart = time;
+        }
+        if (completedRegex.test(msg)) {
+            if (entry.openStart) {
+                entry.intervals.push({ start: entry.openStart, end: time });
+                entry.openStart = null;
+            }
+        }
+    }
+
+    if (!lastDate || !perDate.has(lastDate)) return null;
+    const entry = perDate.get(lastDate);
+    if (entry.openStart) {
+        entry.intervals.push({ start: entry.openStart, end: null });
+    }
+    return {
+        date: lastDate,
+        intervals: entry.intervals.map(interval => ({
+            start: formatTimeOnly(interval.start),
+            end: formatTimeOnly(interval.end)
+        }))
+    };
 }
 
 function normalizeState(raw) {
@@ -530,6 +581,7 @@ async function fetchBoilerLogs() {
         const lines = text.split('\n');
         const totalLines = lines.length;
         const logSlice = totalLines > BOILER_LOG_LIMIT ? lines.slice(-BOILER_LOG_LIMIT) : lines;
+        boilerRunInterval = parseBoilerRunIntervals(logSlice);
         const reversed = [...logSlice].reverse().join('\n');
         const notice = totalLines > BOILER_LOG_LIMIT
             ? `(showing last ${BOILER_LOG_LIMIT} of ${totalLines} lines)\n`
@@ -559,6 +611,10 @@ async function fetchBoilerState() {
         const remainingText = formatSeconds(data.remaining_sec);
         const updated = data.last_update_ts ? formatWithRelative(data.last_update_ts) : 'n/a';
         const dateLabel = data.date ? formatDateOnly(data.date) : 'today';
+        const interval = boilerRunInterval && boilerRunInterval.date === data.date ? boilerRunInterval : null;
+        const runText = interval && interval.intervals.length
+            ? `Runs: ${interval.intervals.map(item => `${item.start}${item.end ? `\u2013${item.end}` : '\u2013\u2026'}`).join(', ')}`
+            : '';
 
         const mainText = completed ? 'COMPLETE' : 'INCOMPLETE';
         const meta1 = completed
@@ -567,7 +623,7 @@ async function fetchBoilerState() {
         boilerCardValue.textContent = mainText;
         boilerCardValue.className = `value ${completed ? 'on' : 'off'}`;
         boilerCardMeta.textContent = meta1;
-        boilerCardMeta2.textContent = '';
+        boilerCardMeta2.textContent = runText;
         boilerCard.className = `status-card boiler-card ${completed ? 'ok' : ''}`;
     } catch (error) {
         boilerCardValue.textContent = 'Unavailable';
