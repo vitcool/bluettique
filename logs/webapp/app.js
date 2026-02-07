@@ -13,7 +13,6 @@ const boilerCardValue = document.getElementById('boilerCardValue');
 const boilerCardMeta = document.getElementById('boilerCardMeta');
 const boilerCardMeta2 = document.getElementById('boilerCardMeta2');
 const acStatus = document.getElementById('acStatus');
-const acStatusTime = document.getElementById('acStatusTime');
 const batteryPercentEl = document.getElementById('batteryPercent');
 const batteryTime = document.getElementById('batteryTime');
 const batteryExtra = document.getElementById('batteryExtra');
@@ -374,7 +373,6 @@ function renderPowerSummary(summary) {
     acStatus.textContent = acVal ?? '—';
     acStatus.classList.toggle('on', acVal === 'ON');
     acStatus.classList.toggle('off', acVal === 'OFF');
-    acStatusTime.textContent = formatWithRelative(summary.acOutputTs);
     const acPower = summary.acOutputPower;
     const acPowerTs = summary.acOutputPowerTs || summary.acOutputTs;
     if (acOutputDetail) {
