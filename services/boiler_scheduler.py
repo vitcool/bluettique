@@ -194,8 +194,12 @@ class BoilerScheduler:
             await self.tapo.initialize()
             await self.tapo.turn_off()
             self.logger.info("Boiler: Turned socket OFF")
-        except Exception:
-            self.logger.warning("Boiler: Failed to turn off socket", exc_info=True)
+        except Exception as exc:
+            message = str(exc)
+            if any(token in message for token in ("No route to host", "HostUnreachable", "ConnectError")):
+                self.logger.warning("Boiler: Failed to turn off socket (device unreachable)")
+            else:
+                self.logger.warning("Boiler: Failed to turn off socket", exc_info=True)
 
     async def _is_online(self) -> bool:
         try:
@@ -216,14 +220,20 @@ class BoilerScheduler:
         except Exception:
             return False
 
-    async def _start_socket(self):
+    async def _start_socket(self) -> bool:
         try:
             await self.tapo.initialize()
             await self.tapo.turn_on()
+            device_info = await self.tapo.get_state()
+            is_on = getattr(device_info, "device_on", None)
+            if is_on is not True:
+                self.logger.warning("Boiler: Socket did not confirm ON after turn on; pausing.")
+                return False
             self.logger.info("Boiler: Turned socket ON")
+            return True
         except Exception:
             self.logger.warning("Boiler: Failed to turn on socket", exc_info=True)
-            raise
+            return False
 
     async def _tick(self, now: datetime):
         start, end = self._window_bounds(now)
@@ -270,11 +280,12 @@ class BoilerScheduler:
             return self.config.poll_sec
 
         # Ensure socket on
-        try:
-            self.logger.info("Boiler: Reconnecting socket before turn ON")
-            await self._start_socket()
-        except Exception:
+        self.logger.info("Boiler: Reconnecting socket before turn ON")
+        turned_on = await self._start_socket()
+        if not turned_on:
             self.state = BoilerState.PAUSED
+            # Avoid counting time if we couldn't confirm power state.
+            self.last_update_monotonic = now_mono
             self._persist_state(now)
             return self.config.poll_sec
 
