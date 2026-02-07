@@ -16,6 +16,7 @@ const acStatus = document.getElementById('acStatus');
 const acStatusTime = document.getElementById('acStatusTime');
 const batteryPercentEl = document.getElementById('batteryPercent');
 const batteryTime = document.getElementById('batteryTime');
+const batteryExtra = document.getElementById('batteryExtra');
 const inputStatus = document.getElementById('inputStatus');
 const inputDetail = document.getElementById('inputDetail');
 const connStatus = document.getElementById('connStatus');
@@ -38,6 +39,7 @@ const OFFLINE_WAIT_COOLDOWN_MIN = (() => {
 const OFFLINE_WAIT_COOLDOWN_MS = OFFLINE_WAIT_COOLDOWN_MIN * 60_000;
 const mobileQuery = window.matchMedia('(max-width: 900px)');
 let currentView = mobileQuery.matches ? 'status' : 'transitions';
+const DEBUG_BATTERY = urlParams.get('debug_battery') === '1';
 
 const stateRegex = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) - [A-Z]+ - Charging: ([^-]+?)(?: - (.*))?$/;
 const tsRegex = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3})/;
@@ -225,6 +227,8 @@ function extractPowerSummary(lines) {
         acOutputTs: null,
         batteryPercent: null,
         batteryTs: null,
+        pack2Battery: null,
+        pack3Battery: null,
         dcInputPower: null,
         dcInputTs: null,
         acInputPower: null,
@@ -283,6 +287,56 @@ function extractPowerSummary(lines) {
             }
         }
 
+        if (summary.pack2Battery === null && line.includes('pack_details2')) {
+            const jsonMatch = line.match(/pack_details2\s+(\{.*\})/i);
+            if (jsonMatch) {
+                try {
+                    const data = JSON.parse(jsonMatch[1]);
+                    if (typeof data.percent === 'number') {
+                        summary.pack2Battery = data.percent;
+                    } else if (typeof data.percent === 'string' && data.percent.trim() !== '') {
+                        const parsed = parseFloat(data.percent);
+                        if (!Number.isNaN(parsed)) summary.pack2Battery = parsed;
+                    }
+                } catch (err) {
+                    if (DEBUG_BATTERY) {
+                        console.warn('[battery-debug] pack_details2 JSON parse failed', err);
+                    }
+                }
+            } else {
+                const match = line.match(/pack_details2\s+\{.*"percent"\s*:\s*([\d.]+)/i);
+                if (match) summary.pack2Battery = parseFloat(match[1]);
+            }
+            if (DEBUG_BATTERY) {
+                console.log('[battery-debug] pack_details2', { value: summary.pack2Battery, line });
+            }
+        }
+
+        if (summary.pack3Battery === null && line.includes('pack_details3')) {
+            const jsonMatch = line.match(/pack_details3\s+(\{.*\})/i);
+            if (jsonMatch) {
+                try {
+                    const data = JSON.parse(jsonMatch[1]);
+                    if (typeof data.percent === 'number') {
+                        summary.pack3Battery = data.percent;
+                    } else if (typeof data.percent === 'string' && data.percent.trim() !== '') {
+                        const parsed = parseFloat(data.percent);
+                        if (!Number.isNaN(parsed)) summary.pack3Battery = parsed;
+                    }
+                } catch (err) {
+                    if (DEBUG_BATTERY) {
+                        console.warn('[battery-debug] pack_details3 JSON parse failed', err);
+                    }
+                }
+            } else {
+                const match = line.match(/pack_details3\s+\{.*"percent"\s*:\s*([\d.]+)/i);
+                if (match) summary.pack3Battery = parseFloat(match[1]);
+            }
+            if (DEBUG_BATTERY) {
+                console.log('[battery-debug] pack_details3', { value: summary.pack3Battery, line });
+            }
+        }
+
         if (summary.dcInputPower === null) {
             const match = line.match(/dc_input_power\s+(-?[\d.]+)/i);
             if (match) {
@@ -304,7 +358,9 @@ function extractPowerSummary(lines) {
             summary.batteryPercent !== null &&
             summary.dcInputPower !== null &&
             summary.acInputPower !== null &&
-            summary.acOutputPower !== null
+            summary.acOutputPower !== null &&
+            summary.pack2Battery !== null &&
+            summary.pack3Battery !== null
         ) {
             break;
         }
@@ -333,6 +389,24 @@ function renderPowerSummary(summary) {
     const pct = summary.batteryPercent;
     batteryPercentEl.textContent = typeof pct === 'number' && !isNaN(pct) ? Math.round(pct) : '—';
     batteryTime.textContent = formatWithRelative(summary.batteryTs);
+    if (batteryExtra) {
+        const pack2 = summary.pack2Battery;
+        const pack3 = summary.pack3Battery;
+        const hasPack2 = typeof pack2 === 'number' && !isNaN(pack2);
+        const hasPack3 = typeof pack3 === 'number' && !isNaN(pack3);
+        const hideExtra = hasPack2 && hasPack3 && pack2 === 0 && pack3 === 0;
+        batteryExtra.classList.toggle('hidden', hideExtra);
+        if (DEBUG_BATTERY) {
+            console.log('[battery-debug]', {
+                pack2,
+                pack3,
+                hasPack2,
+                hasPack3,
+                hideExtra,
+                batteryTs: summary.batteryTs
+            });
+        }
+    }
 
     const dc = summary.dcInputPower;
     const ac = summary.acInputPower;
