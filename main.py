@@ -3,25 +3,45 @@ import signal
 import logging
 import os
 from dotenv import load_dotenv
-from controllers.fingerbot import FingerBotController
-from controllers.tapo import TapoController
 from controllers.bluetti import BluettiController
-from state_handler import StateHandler
+from controllers.tapo import TapoController
 from utils.logger import setup_logging
-from services.schedule_manager import ScheduleManager
+from charging_state_handler import ChargingStateHandler
+from services.boiler_scheduler import BoilerScheduler, BoilerConfig
+from services.tapo import TapoService
 
-async def main(tapo_controller, bluetti_controller, fingerbot_controller):
-    setup_logging()
-    
-    logging.info("Starting services...")
-    print("Starting services...")
-
-    await tapo_controller.initialize()
+async def test_bluetti_dc_cycle(bluetti_controller: BluettiController):
+    """Initialize Bluetti, then toggle DC on/off five times with 5s intervals."""
     await bluetti_controller.initialize()
+    if not bluetti_controller.connection_set:
+        logging.info("Bluetti connection failed; skipping DC cycle test.")
+        return
+
+    cycles = 5
+    for i in range(1, cycles + 1):
+        logging.info(f"[Cycle {i}/{cycles}] Turning Bluetti DC output ON")
+        bluetti_controller.turn_dc("ON")
+        await asyncio.sleep(5)
+        logging.info(f"[Cycle {i}/{cycles}] Turning Bluetti DC output OFF")
+        bluetti_controller.turn_dc("OFF")
+        await asyncio.sleep(5)
+
+    # After the test cycles, gracefully stop MQTT client/broker so the adapter is freed.
+    bluetti_controller.stop()
+
+
+async def main(tapo_controller, bluetti_controller):
+    setup_logging()
+
+    logging.info("Starting Bluetti DC cycle test...")
+    print("Starting Bluetti DC cycle test...")
+
+    boiler_task = None
 
     def handle_stop_signal(signum, frame):
         logging.info("Stop signal received, performing cleanup...")
-        # Perform your cleanup logic here, e.g., stop services
+        if boiler_task:
+            boiler_task.cancel()
         bluetti_controller.stop()
         logging.info("Cleanup complete, exiting.")
         exit(0)
@@ -30,19 +50,32 @@ async def main(tapo_controller, bluetti_controller, fingerbot_controller):
     signal.signal(signal.SIGTERM, handle_stop_signal)
     signal.signal(signal.SIGINT, handle_stop_signal)
 
-    state_handler = StateHandler()
-    
-    schedule_manager = ScheduleManager()
-    schedule_manager.start_periodic_updates()
-    logging.info(f"is outage expected: {schedule_manager.is_outage_expected()}")
+    # Optional one-shot DC test; disable via env RUN_DC_TEST=false
+    # Default off so the state machine starts immediately; enable if you need the DC pulse.
+    run_dc_test = os.getenv("RUN_DC_TEST", "false").lower() in ["1", "true", "yes", "on"]
+    if run_dc_test:
+        await test_bluetti_dc_cycle(bluetti_controller)
 
-    while True:
-        await state_handler.handle_state(
-            tapo_controller, bluetti_controller, fingerbot_controller, schedule_manager
+    # Optional boiler scheduler (runs concurrently with charging logic)
+    boiler_config = BoilerConfig.from_env()
+    if boiler_config.enabled:
+        boiler_tapo = TapoService(
+            username=boiler_config.username,
+            password=boiler_config.password,
+            ip_address=boiler_config.ip_address,
         )
-        await asyncio.sleep(1)
+        boiler_scheduler = BoilerScheduler(boiler_tapo, config=boiler_config)
+        boiler_task = asyncio.create_task(boiler_scheduler.run())
+        logging.info("Boiler scheduler started in background.")
+    else:
+        logging.info("Boiler scheduler disabled.")
+
+    # Main charging state machine
+    charging_handler = ChargingStateHandler(tapo_controller, bluetti_controller)
+    while True:
+        await charging_handler.handle_state()
 
 
 load_dotenv()
 
-asyncio.run(main(TapoController(), BluettiController(), FingerBotController()))
+asyncio.run(main(TapoController(), BluettiController()))

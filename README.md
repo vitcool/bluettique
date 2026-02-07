@@ -1,11 +1,10 @@
 # bluettique
 
-Bluettique is a Python-based project designed to manage and control various smart devices, including Bluetti power stations, FingerBot devices, and Tapo smart plugs. The project integrates with these devices using Bluetooth and MQTT protocols, providing a seamless way to automate and monitor their operations.
+Bluettique is a Python-based project designed to manage and control various smart devices, including Bluetti power stations and Tapo smart plugs. The project integrates with these devices using MQTT and device APIs, providing a seamless way to automate and monitor their operations.
 
 ## Features
 
 - **Bluetti Power Station Control**: Connects to Bluetti power stations via MQTT to monitor and control AC/DC outputs, power status, and battery levels.
-- **FingerBot Automation**: Uses Bluetooth to connect and control FingerBot devices, allowing for automated button pressing and device pairing.
 - **Tapo Smart Plug Integration**: Manages Tapo smart plugs via the Tapo API, enabling remote control and status monitoring.
 - **State Management**: Implements a state handler to manage the different states of the system, ensuring smooth transitions and operations.
 - **Logging**: Provides detailed logging for debugging and monitoring purposes.
@@ -67,6 +66,18 @@ FINGERBOT_DEV_ID_ADD=
 TAPO_USERNAME=
 TAPO_PASSWORD=
 TAPO_IP_ADDRESS=
+CHARGING_SOCKET_DEVICE_ID=  # optional; overrides TAPO_IP_ADDRESS for the charger plug
+CHARGING_W_THRESHOLD=20
+LOW_POWER_CONSECUTIVE_COUNT=3
+CHECK_INTERVAL_SEC=900
+STARTUP_GRACE_SEC=90
+MIN_ON_TIME_SEC=1200
+STABLE_POWER_CHECKS=2
+STABLE_POWER_INTERVAL_SEC=60
+RECHECK_CYCLE_ENABLED=true
+RECHECK_OFF_SEC=90
+RECHECK_QUICK_CHECKS=3
+RECHECK_QUICK_INTERVAL_SEC=20
 
 BLUETTI_BROKER_HOST=
 BLUETTI_BROKER_INTERVAL=
@@ -79,7 +90,18 @@ LONG_IDLE_INTERVAL=
 
 ENV='dev' # 'prod'
 
-SCHEDULE_GROUP_NAME = # group name according to the schedule
+# Boiler nightly scheduler (independent from charging loop)
+BOILER_ENABLED=false
+BOILER_TAPO_EMAIL=
+BOILER_TAPO_PASSWORD=
+BOILER_TAPO_IP=
+BOILER_WINDOW_START="00:00"
+BOILER_WINDOW_END="06:00"
+BOILER_TOTAL_RUN_SEC=7200
+BOILER_POLL_SEC=300
+BOILER_ACTIVE_W_THRESHOLD=0
+BOILER_STATE_FILE=logs/boiler_logs/boiler_state.json
+BOILER_LOG_FILE=logs/boiler_logs/boiler.log
 ```
 
 Make sure to replace the placeholders with your actual credentials and settings.
@@ -96,17 +118,32 @@ Make sure to replace the placeholders with your actual credentials and settings.
 
    `python main.py`
 
+### Boiler nightly scheduler
+
+- When `BOILER_ENABLED=true`, a separate async scheduler runs alongside charging. It targets a dedicated TAPO socket (credentials/IP above) and guarantees the socket is ON for `BOILER_TOTAL_RUN_SEC` seconds within the daily window (`BOILER_WINDOW_START`–`BOILER_WINDOW_END`, default 00:00–06:00).
+- If power is unavailable at window start, it polls every `BOILER_POLL_SEC` seconds until the socket comes online, then starts. If power drops mid-run, the countdown pauses and resumes when power returns (only the remaining seconds are run).
+- An optional `BOILER_ACTIVE_W_THRESHOLD` lets you count runtime only while power draw meets/exceeds the threshold (0 means count whenever the socket is ON).
+- Progress persists per night to `BOILER_STATE_FILE`; if the process restarts during the same window, it resumes the remaining seconds. Logs are written to `BOILER_LOG_FILE`.
+
+## Charging flow behavior
+
+- On startup the app pairs with the configured Tapo P110 (`CHARGING_SOCKET_DEVICE_ID` or `TAPO_IP_ADDRESS`) and turns the socket on.
+- A charging supervisor monitors instantaneous power to decide whether charging is active (`power >= CHARGING_W_THRESHOLD`).
+- After a startup grace period and minimum on-time, sustained low power (`LOW_POWER_CONSECUTIVE_COUNT`) triggers a recheck cycle; if low power persists the socket is turned off.
+- Periodic checks are spaced by `CHECK_INTERVAL_SEC`; quick rechecks use `RECHECK_QUICK_*` settings. Stable power confirmation uses `STABLE_POWER_*`.
+- All state transitions and power checks are logged for observability; failures drop back to the wait state and retry.
+
 ## Running with Docker Compose
 
 1. Ensure Docker and Docker Compose are installed on your system.
 
 2. Build and start the containers in detached mode:
 
-   `docker-compose up -d --build`
+   `docker compose up -d --build`
 
 3. To stop the containers:
 
-   `docker-compose down`
+   `docker compose down`
 
 ## Dependencies
 

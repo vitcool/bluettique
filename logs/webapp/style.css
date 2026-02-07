@@ -1,0 +1,216 @@
+:root {
+    --bg: #0b1221;
+    --panel: #0f172a;
+    --muted: #a7b0c5;
+    --text: #e5e7f2;
+    --accent: #38bdf8;
+    --accent-muted: rgba(56, 189, 248, 0.15);
+    --border: #1f2937;
+    --success: #34d399;
+    --danger: #f87171;
+    --warning: #fbbf24;
+}
+
+* { box-sizing: border-box; }
+
+body {
+    font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+    background: radial-gradient(circle at 20% 20%, #0f233d 0%, #0b1221 45%, #090f1c 100%);
+    color: var(--text);
+    margin: 0;
+    padding: 24px;
+}
+
+h1 {
+    margin: 0;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+}
+
+.topbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 16px;
+}
+
+.view-toggle {
+    display: inline-flex;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--panel);
+    overflow: hidden;
+}
+
+.view-toggle button {
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    padding: 10px 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: color 0.15s ease, background 0.2s ease;
+}
+
+.view-toggle button.active {
+    color: var(--text);
+    background: var(--accent-muted);
+}
+
+.mobile-only { display: none; }
+
+.status-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.status-card {
+    background: linear-gradient(135deg, rgba(56, 189, 248, 0.06), rgba(15, 23, 42, 0.85));
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 12px 14px;
+    box-shadow: 0 14px 40px rgba(0, 0, 0, 0.28);
+}
+
+.status-card .label {
+    color: var(--muted);
+    font-size: 0.85rem;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+}
+
+.status-card .value {
+    font-size: 1.45rem;
+    font-weight: 700;
+    color: var(--text);
+    display: flex;
+    gap: 6px;
+    align-items: baseline;
+}
+
+.status-card .value.on { color: var(--success); }
+.status-card .value.off { color: var(--danger); }
+
+.status-card .unit {
+    font-size: 0.95rem;
+    color: var(--muted);
+}
+
+.status-card .meta {
+    margin-top: 6px;
+    color: var(--muted);
+    font-size: 0.9rem;
+}
+
+.boiler-card {
+    min-width: 240px;
+    background: linear-gradient(135deg, rgba(248, 113, 113, 0.08), rgba(15, 23, 42, 0.9));
+    border-color: rgba(248, 113, 113, 0.4);
+}
+
+.boiler-card.ok {
+    background: linear-gradient(135deg, rgba(52, 211, 153, 0.10), rgba(15, 23, 42, 0.9));
+    border-color: rgba(52, 211, 153, 0.5);
+}
+
+.boiler-card .value {
+    color: var(--danger);
+}
+
+.boiler-card.ok .value {
+    color: var(--success);
+}
+
+.panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 16px;
+    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+}
+
+.latest {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+    align-items: baseline;
+    margin-bottom: 12px;
+}
+
+.latest .state {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--accent);
+}
+
+.latest .time {
+    font-size: 0.95rem;
+    color: var(--muted);
+    text-align: right;
+}
+
+.timeline {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-height: 45vh;
+    overflow: auto;
+    padding-right: 6px;
+}
+
+.state-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 6px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.state-row .state-title {
+    font-weight: 600;
+}
+
+.state-row .meta {
+    text-align: right;
+    color: var(--muted);
+    font-size: 0.9rem;
+}
+
+.state-row .detail {
+    grid-column: 1 / -1;
+    color: var(--muted);
+    font-size: 0.92rem;
+    margin-top: 2px;
+}
+
+pre {
+    background-color: #0d1526;
+    padding: 14px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    overflow: auto;
+    max-height: 70vh;
+    color: var(--text);
+    white-space: pre-wrap;
+}
+
+.hidden { display: none; }
+
+@media (max-width: 720px) {
+    body { padding: 18px; }
+    .latest { grid-template-columns: 1fr; }
+    .latest .time { text-align: left; }
+    .timeline { max-height: none; }
+    .status-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 1024px) {
+    .mobile-only { display: inline-block; }
+}

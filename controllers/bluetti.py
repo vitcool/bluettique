@@ -14,7 +14,16 @@ class BluettiController:
         self.dc_turned_on = False
 
     async def initialize(self):
-        logging.info("BluettiController initialized.")
+        if self.connection_set:
+            if self.bluetti.device_connected:
+                logging.info("BluettiController already connected; skipping initialize.")
+                return
+            logging.info(
+                "BluettiController flagged connected but device is not; attempting reconnection."
+            )
+            self.connection_set = False
+
+        logging.info("BluettiController initializing.")
         for attempt in range(CONNECTION_RETRY_ATTEMPTS):
             if await self.bluetti.connect():
                 logging.info("BluettiMQTTService connected.")
@@ -57,5 +66,11 @@ class BluettiController:
         return status
 
     def stop(self):
+        logging.info("Bluetti: Stopping MQTT client and broker")
         self.bluetti.stop_client()
         self.bluetti.stop_broker()
+        self.bluetti.disconnect_device()
+        self.connection_set = False
+        self.turned_on = False
+        self.ac_turned_on = False
+        self.dc_turned_on = False

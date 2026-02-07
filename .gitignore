@@ -166,3 +166,4 @@ venv/
 
 # ignore logs
 logs/log.txt*
+logs/boiler_logs/*
