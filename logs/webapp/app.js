@@ -1,13 +1,10 @@
-const logContent = document.getElementById('logContent');
-const stateTimeline = document.getElementById('stateTimeline');
-const transitionsTimeline = document.getElementById('transitionsTimeline');
-const viewButtons = document.querySelectorAll('.view-toggle button');
 const statusView = document.getElementById('statusView');
-const statesView = document.getElementById('statesView');
-const transitionsView = document.getElementById('transitionsView');
 const logView = document.getElementById('logView');
-const boilerView = document.getElementById('boilerView');
-const boilerLogContent = document.getElementById('boilerLogContent');
+const logSections = document.getElementById('logSections');
+const logContent = document.getElementById('logContent');
+const refreshLogsBtn = document.getElementById('refreshLogsBtn');
+const viewButtons = document.querySelectorAll('.view-toggle button');
+
 const boilerCard = document.getElementById('boilerCard');
 const boilerCardValue = document.getElementById('boilerCardValue');
 const boilerCardMeta = document.getElementById('boilerCardMeta');
@@ -21,62 +18,104 @@ const inputDetail = document.getElementById('inputDetail');
 const connStatus = document.getElementById('connStatus');
 const connDetail = document.getElementById('connDetail');
 const acOutputDetail = document.getElementById('acOutputDetail');
-const LOG_LINE_LIMIT = 800; // cap full-log view for performance
-const BOILER_LOG_LIMIT = 400;
+const chargingStateValue = document.getElementById('chargingStateValue');
+const chargingStateMeta = document.getElementById('chargingStateMeta');
+
+const STATUS_REFRESH_MS = 2000;
+const DEFAULT_LOG_LIMIT = 800;
 const urlParams = new URLSearchParams(window.location.search);
-const CONNECTION_WINDOW_MIN = (() => {
+let connectionWindowMin = (() => {
     const val = Number(urlParams.get('conn_window_min'));
     if (Number.isFinite(val) && val > 0) return val;
-    return 5; // default freshness window in minutes
+    return 5;
 })();
-const CONNECTION_WINDOW_MS = CONNECTION_WINDOW_MIN * 60_000;
-const OFFLINE_WAIT_COOLDOWN_MIN = (() => {
-    const val = Number(urlParams.get('offline_cooldown_min'));
-    if (Number.isFinite(val) && val >= 0) return val;
-    return 10; // default throttle window in minutes (was 360)
-})();
-const OFFLINE_WAIT_COOLDOWN_MS = OFFLINE_WAIT_COOLDOWN_MIN * 60_000;
-const mobileQuery = window.matchMedia('(max-width: 900px)');
-let currentView = mobileQuery.matches ? 'status' : 'transitions';
-const DEBUG_BATTERY = urlParams.get('debug_battery') === '1';
 
-const stateRegex = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) - [A-Z]+ - Charging: ([^-]+?)(?: - (.*))?$/;
-const tsRegex = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3})/;
-let boilerRunInterval = null;
+let currentView = 'status';
+let logFetchController = null;
+let logFetchInFlight = false;
 
-function setView(view) {
-    currentView = view;
-    const mobile = mobileQuery.matches;
-    const showStatus = view === 'status';
-    const showStates = view === 'states';
-    const showTransitions = view === 'transitions';
-    const showLog = view === 'log';
-    const showBoiler = view === 'boiler';
-    if (mobile) {
-        statusView.classList.toggle('hidden', !showStatus);
-    } else {
-        statusView.classList.remove('hidden');
-    }
-    statesView.classList.toggle('hidden', !showStates);
-    transitionsView.classList.toggle('hidden', !showTransitions);
-    logView.classList.toggle('hidden', !showLog);
-    boilerView.classList.toggle('hidden', !showBoiler);
-    viewButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.view === view));
+function isDesktopLayout() {
+    const width = window.innerWidth || document.documentElement.clientWidth || 0;
+    const coarsePointer = window.matchMedia('(pointer: coarse)').matches;
+    const touchDevice = coarsePointer || (navigator.maxTouchPoints || 0) > 0;
+
+    // Always desktop on clearly wide screens; otherwise only for non-touch layouts.
+    if (width >= 980) return true;
+    if (touchDevice) return false;
+    return width >= 760;
 }
 
-viewButtons.forEach(btn => {
-    btn.addEventListener('click', () => setView(btn.dataset.view));
-});
-mobileQuery.addEventListener('change', () => setView(currentView));
+function clearLogSections() {
+    logSections.innerHTML = '';
+}
 
-function formatDate(ts) {
-    const iso = ts.replace(' ', 'T').replace(',', '.');
-    const d = new Date(iso);
-    return isNaN(d.getTime()) ? ts : d.toLocaleString();
+function renderLogTextMessage(message) {
+    clearLogSections();
+    const pre = document.createElement('pre');
+    pre.id = 'logContent';
+    pre.textContent = message;
+    logSections.appendChild(pre);
+}
+
+function appendLogSourceSection(label, file, lines) {
+    const section = document.createElement('section');
+    section.className = 'log-source';
+
+    const header = document.createElement('div');
+    header.className = 'log-source-header';
+    header.textContent = `${label} (${file})`;
+
+    const pre = document.createElement('pre');
+    pre.textContent = lines.length ? lines.join('\n') : '(no lines)';
+
+    section.appendChild(header);
+    section.appendChild(pre);
+    logSections.appendChild(section);
+}
+
+function renderLogSources(sources) {
+    clearLogSections();
+    sources.forEach(source => {
+        const label = source?.label || 'log';
+        const file = source?.file || 'unknown';
+        const lines = Array.isArray(source?.lines) ? [...source.lines].reverse() : [];
+        appendLogSourceSection(label, file, lines);
+    });
+}
+
+function parseLegacyCombinedLogs(rawLogs) {
+    const sections = [];
+    let current = null;
+    const lines = rawLogs.split('\n');
+    const headerRe = /^=====\\s*(.+?)\\s*\\((.+?)\\)\\s*=====$/;
+
+    for (const line of lines) {
+        const m = line.match(headerRe);
+        if (m) {
+            if (current) sections.push(current);
+            current = { label: m[1], file: m[2], lines: [] };
+            continue;
+        }
+        if (!current) {
+            current = { label: 'logs', file: 'combined', lines: [] };
+        }
+        current.lines.push(line);
+    }
+    if (current) sections.push(current);
+    return sections.filter(section => section.lines.length > 0);
 }
 
 function parseTimestamp(ts) {
-    return new Date(ts.replace(' ', 'T').replace(',', '.'));
+    if (!ts) return new Date(NaN);
+    if (ts.includes(',')) {
+        return new Date(ts.replace(' ', 'T').replace(',', '.'));
+    }
+    return new Date(ts);
+}
+
+function formatDate(ts) {
+    const d = parseTimestamp(ts);
+    return isNaN(d.getTime()) ? ts : d.toLocaleString();
 }
 
 function relativeTime(ts) {
@@ -98,118 +137,6 @@ function formatWithRelative(ts) {
     return rel ? `${formatDate(ts)} (${rel})` : formatDate(ts);
 }
 
-function formatDuration(ms) {
-    if (!Number.isFinite(ms) || ms < 0) return '';
-    const totalMinutes = Math.round(ms / 60000);
-    const hours = Math.floor(totalMinutes / 60);
-    const mins = totalMinutes % 60;
-    return `${hours.toString().padStart(2, '0')}h ${mins.toString().padStart(2, '0')}m`;
-}
-
-function formatSeconds(sec) {
-    if (!Number.isFinite(sec) || sec < 0) return '';
-    return formatDuration(sec * 1000);
-}
-
-function formatDateOnly(dateStr) {
-    if (!dateStr) return '';
-    const parts = dateStr.split('-').map(Number);
-    if (parts.length !== 3 || parts.some(n => Number.isNaN(n))) return dateStr;
-    const d = new Date(parts[0], parts[1] - 1, parts[2]);
-    return isNaN(d.getTime()) ? dateStr : d.toLocaleDateString();
-}
-
-function formatTimeOnly(timeStr) {
-    if (!timeStr) return '';
-    return timeStr.slice(0, 5);
-}
-
-function parseBoilerRunIntervals(lines) {
-    const lineRegex = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2}),\d{3} - \w+ - (.*)$/;
-    const runningRegex = /Boiler: (?:State transition \w+ -> Running|Running; remaining)/;
-    const completedRegex = /Boiler: State transition \w+ -> Completed/;
-    const perDate = new Map();
-    let lastDate = null;
-
-    for (const line of lines) {
-        const match = lineRegex.exec(line);
-        if (!match) continue;
-        const date = match[1];
-        const time = match[2];
-        const msg = match[3];
-        lastDate = date;
-
-        if (!perDate.has(date)) {
-            perDate.set(date, { intervals: [], openStart: null });
-        }
-        const entry = perDate.get(date);
-
-        if (runningRegex.test(msg)) {
-            if (!entry.openStart) entry.openStart = time;
-        }
-        if (completedRegex.test(msg)) {
-            if (entry.openStart) {
-                entry.intervals.push({ start: entry.openStart, end: time });
-                entry.openStart = null;
-            }
-        }
-    }
-
-    if (!lastDate || !perDate.has(lastDate)) return null;
-    const entry = perDate.get(lastDate);
-    if (entry.openStart) {
-        entry.intervals.push({ start: entry.openStart, end: null });
-    }
-    return {
-        date: lastDate,
-        intervals: entry.intervals.map(interval => ({
-            start: formatTimeOnly(interval.start),
-            end: formatTimeOnly(interval.end)
-        }))
-    };
-}
-
-function normalizeState(raw) {
-    const trimmed = raw.trim();
-    const upper = trimmed.toUpperCase();
-
-    // Collapse noisy charging checks into a single CHARGING state
-    if (
-        upper.startsWith('POWER CHECK') ||
-        upper.startsWith('STABLE CHECK') ||
-        upper.startsWith('RECHECK') ||
-        upper.startsWith('IN STARTUP GRACE') ||
-        upper.startsWith('RECHECK -') ||
-        upper.startsWith('RECHECK ') ||
-        upper.startsWith('START_CHARGING') ||
-        upper.startsWith('MONITORCHARGINGSTATE') // safety
-    ) {
-        return 'CHARGING';
-    }
-
-    // Charging start/stop
-    if (upper.includes('START_CHARGING')) return 'CHARGING';
-    if (upper.includes('STOP_CHARGING')) return 'WAIT';
-
-    // Waiting / offline
-    if (upper.includes('WAIT_POWER')) return 'WAIT';
-    if (upper.startsWith('TAPO OFFLINE')) return 'OFFLINE';
-    if (upper.startsWith('TAPO ONLINE')) return 'WAIT';
-
-    // State transition lines -> map to target if present
-    if (upper.startsWith('STATE TRANSITION')) {
-        const match = trimmed.match(/->\\s*(\\w+)/);
-        if (match) {
-            const target = match[1].toUpperCase();
-            if (target.includes('STARTCHARGING') || target.includes('MONITOR')) return 'CHARGING';
-            if (target.includes('WAIT')) return 'WAIT';
-            if (target.includes('STOP')) return 'WAIT';
-        }
-    }
-
-    return trimmed;
-}
-
 function pickLatestTimestamp(timestamps) {
     const dated = timestamps
         .filter(Boolean)
@@ -220,191 +147,86 @@ function pickLatestTimestamp(timestamps) {
     return dated[0].ts;
 }
 
-function extractPowerSummary(lines) {
-    const summary = {
-        acOutputOn: null,
-        acOutputTs: null,
-        batteryPercent: null,
-        batteryTs: null,
-        pack2Battery: null,
-        pack3Battery: null,
-        dcInputPower: null,
-        dcInputTs: null,
-        acInputPower: null,
-        acInputTs: null,
-        acOutputPower: null,
-        acOutputPowerTs: null,
-        lastMessageTs: null,
-        forcedOfflineTs: null,
-        forcedAcOffTs: null
+function formatSeconds(sec) {
+    if (!Number.isFinite(sec) || sec < 0) return '';
+    const totalMinutes = Math.round(sec / 60);
+    const hours = Math.floor(totalMinutes / 60);
+    const mins = totalMinutes % 60;
+    return `${hours.toString().padStart(2, '0')}h ${mins.toString().padStart(2, '0')}m`;
+}
+
+function formatDateOnly(dateStr) {
+    if (!dateStr) return '';
+    const parts = dateStr.split('-').map(Number);
+    if (parts.length !== 3 || parts.some(n => Number.isNaN(n))) return dateStr;
+    const d = new Date(parts[0], parts[1] - 1, parts[2]);
+    return isNaN(d.getTime()) ? dateStr : d.toLocaleDateString();
+}
+
+function normalizeOnOff(value) {
+    if (value === true) return 'ON';
+    if (value === false) return 'OFF';
+    if (typeof value === 'string') return value.toUpperCase();
+    return null;
+}
+
+function buildPowerSummary(data) {
+    const summary = data?.power_summary || {};
+    const bluetti = data?.bluetti || {};
+
+    return {
+        acOutputOn: summary.acOutputOn ?? normalizeOnOff(bluetti.ac_output_on),
+        acOutputTs: summary.acOutputTs ?? data?.generated_at ?? null,
+        batteryPercent: summary.batteryPercent ?? bluetti.total_battery_percent ?? null,
+        batteryTs: summary.batteryTs ?? data?.generated_at ?? null,
+        pack2Battery: summary.pack2Battery ?? bluetti.pack_details2_percent ?? null,
+        pack2Voltage: summary.pack2Voltage ?? bluetti.pack_details2_voltage ?? null,
+        pack3Battery: summary.pack3Battery ?? bluetti.pack_details3_percent ?? null,
+        pack3Voltage: summary.pack3Voltage ?? bluetti.pack_details3_voltage ?? null,
+        dcInputPower: summary.dcInputPower ?? bluetti.dc_input_power ?? null,
+        dcInputTs: summary.dcInputTs ?? data?.generated_at ?? null,
+        acInputPower: summary.acInputPower ?? bluetti.ac_input_power ?? null,
+        acInputTs: summary.acInputTs ?? data?.generated_at ?? null,
+        acOutputPower: summary.acOutputPower ?? bluetti.ac_output_power ?? null,
+        acOutputPowerTs: summary.acOutputPowerTs ?? data?.generated_at ?? null,
+        lastMessageTs: summary.lastMessageTs ?? data?.connection?.last_message_ts ?? null,
+        forcedOfflineTs: summary.forcedOfflineTs ?? null,
+        forcedAcOffTs: summary.forcedAcOffTs ?? null
     };
-
-    for (let i = lines.length - 1; i >= 0; i--) {
-        const line = lines[i];
-        const tsMatch = tsRegex.exec(line);
-        const ts = tsMatch ? tsMatch[1] : null;
-
-        if (!summary.lastMessageTs && ts && line.includes('Received message:')) {
-            summary.lastMessageTs = ts;
-        }
-
-        if (summary.acOutputPower === null) {
-            const match = line.match(/ac_output_power\s+(-?[\d.]+)/i);
-            if (match) {
-                summary.acOutputPower = parseFloat(match[1]);
-                summary.acOutputPowerTs = ts;
-            }
-        }
-
-        if (!summary.forcedAcOffTs && ts && line.includes('Bluetti: Turning AC device OFF')) {
-            summary.acOutputOn = 'OFF';
-            summary.acOutputTs = ts;
-            summary.forcedAcOffTs = ts;
-        }
-
-        if (!summary.forcedOfflineTs && ts && line.includes('Bluetti: Stopping MQTT client and broker')) {
-            summary.forcedOfflineTs = ts;
-            if (!summary.forcedAcOffTs) {
-                summary.acOutputOn = 'OFF';
-                summary.acOutputTs = summary.acOutputTs || ts;
-            }
-        }
-
-        if (summary.acOutputOn === null) {
-            const match = line.match(/ac_output_on\s+(\w+)/i);
-            if (match) {
-                summary.acOutputOn = match[1].toUpperCase();
-                summary.acOutputTs = ts;
-            }
-        }
-
-        if (summary.batteryPercent === null) {
-            const match = line.match(/total_battery_percent\s+([\d.]+)/i);
-            if (match) {
-                summary.batteryPercent = parseFloat(match[1]);
-                summary.batteryTs = ts;
-            }
-        }
-
-        if (summary.pack2Battery === null && line.includes('pack_details2')) {
-            const jsonMatch = line.match(/pack_details2\s+(\{.*\})/i);
-            if (jsonMatch) {
-                try {
-                    const data = JSON.parse(jsonMatch[1]);
-                    if (typeof data.percent === 'number') {
-                        summary.pack2Battery = data.percent;
-                    } else if (typeof data.percent === 'string' && data.percent.trim() !== '') {
-                        const parsed = parseFloat(data.percent);
-                        if (!Number.isNaN(parsed)) summary.pack2Battery = parsed;
-                    }
-                } catch (err) {
-                    if (DEBUG_BATTERY) {
-                        console.warn('[battery-debug] pack_details2 JSON parse failed', err);
-                    }
-                }
-            } else {
-                const match = line.match(/pack_details2\s+\{.*"percent"\s*:\s*([\d.]+)/i);
-                if (match) summary.pack2Battery = parseFloat(match[1]);
-            }
-            if (DEBUG_BATTERY) {
-                console.log('[battery-debug] pack_details2', { value: summary.pack2Battery, line });
-            }
-        }
-
-        if (summary.pack3Battery === null && line.includes('pack_details3')) {
-            const jsonMatch = line.match(/pack_details3\s+(\{.*\})/i);
-            if (jsonMatch) {
-                try {
-                    const data = JSON.parse(jsonMatch[1]);
-                    if (typeof data.percent === 'number') {
-                        summary.pack3Battery = data.percent;
-                    } else if (typeof data.percent === 'string' && data.percent.trim() !== '') {
-                        const parsed = parseFloat(data.percent);
-                        if (!Number.isNaN(parsed)) summary.pack3Battery = parsed;
-                    }
-                } catch (err) {
-                    if (DEBUG_BATTERY) {
-                        console.warn('[battery-debug] pack_details3 JSON parse failed', err);
-                    }
-                }
-            } else {
-                const match = line.match(/pack_details3\s+\{.*"percent"\s*:\s*([\d.]+)/i);
-                if (match) summary.pack3Battery = parseFloat(match[1]);
-            }
-            if (DEBUG_BATTERY) {
-                console.log('[battery-debug] pack_details3', { value: summary.pack3Battery, line });
-            }
-        }
-
-        if (summary.dcInputPower === null) {
-            const match = line.match(/dc_input_power\s+(-?[\d.]+)/i);
-            if (match) {
-                summary.dcInputPower = parseFloat(match[1]);
-                summary.dcInputTs = ts;
-            }
-        }
-
-        if (summary.acInputPower === null) {
-            const match = line.match(/ac_input_power\s+(-?[\d.]+)/i);
-            if (match) {
-                summary.acInputPower = parseFloat(match[1]);
-                summary.acInputTs = ts;
-            }
-        }
-
-        if (
-            summary.acOutputOn !== null &&
-            summary.batteryPercent !== null &&
-            summary.dcInputPower !== null &&
-            summary.acInputPower !== null &&
-            summary.acOutputPower !== null &&
-            summary.pack2Battery !== null &&
-            summary.pack3Battery !== null
-        ) {
-            break;
-        }
-    }
-
-    return summary;
 }
 
 function renderPowerSummary(summary) {
-    const acVal = summary.acOutputOn;
+    const acVal = normalizeOnOff(summary.acOutputOn);
     acStatus.textContent = acVal ?? '—';
     acStatus.classList.toggle('on', acVal === 'ON');
     acStatus.classList.toggle('off', acVal === 'OFF');
+
     const acPower = summary.acOutputPower;
     const acPowerTs = summary.acOutputPowerTs || summary.acOutputTs;
-    if (acOutputDetail) {
-        if (typeof acPower === 'number' && !isNaN(acPower)) {
-            const tsText = acPowerTs ? formatWithRelative(acPowerTs) : '';
-            acOutputDetail.textContent = `${Math.round(acPower)} W${tsText ? ' — ' + tsText : ''}`;
-        } else {
-            acOutputDetail.textContent = 'Waiting for power…';
-        }
+    if (typeof acPower === 'number' && !isNaN(acPower)) {
+        const tsText = acPowerTs ? formatWithRelative(acPowerTs) : '';
+        acOutputDetail.textContent = `${Math.round(acPower)} W${tsText ? ' — ' + tsText : ''}`;
+    } else {
+        acOutputDetail.textContent = 'Waiting for power…';
     }
 
     const pct = summary.batteryPercent;
     batteryPercentEl.textContent = typeof pct === 'number' && !isNaN(pct) ? Math.round(pct) : '—';
     batteryTime.textContent = formatWithRelative(summary.batteryTs);
-    if (batteryExtra) {
-        const pack2 = summary.pack2Battery;
-        const pack3 = summary.pack3Battery;
-        const hasPack2 = typeof pack2 === 'number' && !isNaN(pack2);
-        const hasPack3 = typeof pack3 === 'number' && !isNaN(pack3);
-        const hideExtra = hasPack2 && hasPack3 && pack2 === 0 && pack3 === 0;
-        batteryExtra.classList.toggle('hidden', hideExtra);
-        if (DEBUG_BATTERY) {
-            console.log('[battery-debug]', {
-                pack2,
-                pack3,
-                hasPack2,
-                hasPack3,
-                hideExtra,
-                batteryTs: summary.batteryTs
-            });
-        }
-    }
+
+    const pack2 = summary.pack2Battery;
+    const pack2Voltage = summary.pack2Voltage;
+    const pack3 = summary.pack3Battery;
+    const pack3Voltage = summary.pack3Voltage;
+    const pack2Connected =
+        (typeof pack2 === 'number' && !isNaN(pack2) && pack2 > 0) &&
+        (typeof pack2Voltage !== 'number' || isNaN(pack2Voltage) || pack2Voltage > 1);
+    const pack3Connected =
+        (typeof pack3 === 'number' && !isNaN(pack3) && pack3 > 0) &&
+        (typeof pack3Voltage !== 'number' || isNaN(pack3Voltage) || pack3Voltage > 1);
+    const hasExtraPacks =
+        pack2Connected || pack3Connected;
+    batteryExtra.classList.toggle('hidden', !hasExtraPacks);
 
     const dc = summary.dcInputPower;
     const ac = summary.acInputPower;
@@ -417,16 +239,15 @@ function renderPowerSummary(summary) {
     if (typeof dc === 'number' && !isNaN(dc)) parts.push(`DC ${Math.round(dc)} W`);
     if (typeof ac === 'number' && !isNaN(ac)) parts.push(`AC ${Math.round(ac)} W`);
     const latestInputTs = pickLatestTimestamp([summary.dcInputTs, summary.acInputTs]);
-    const tsText = latestInputTs ? formatWithRelative(latestInputTs) : 'Waiting for data…';
-    inputDetail.textContent = parts.length ? `${parts.join(' • ')} — ${tsText}` : tsText;
+    const inputTsText = latestInputTs ? formatWithRelative(latestInputTs) : 'Waiting for data…';
+    inputDetail.textContent = parts.length ? `${parts.join(' • ')} — ${inputTsText}` : inputTsText;
 
     const lastMsg = summary.lastMessageTs;
     const forcedOfflineTs = summary.forcedOfflineTs;
     const lastActivityTs = pickLatestTimestamp([lastMsg, forcedOfflineTs]);
 
     if (lastActivityTs) {
-        const lastActivityAge = Date.now() - parseTimestamp(lastActivityTs).getTime();
-        const onlineByTraffic = lastMsg && (Date.now() - parseTimestamp(lastMsg).getTime()) < CONNECTION_WINDOW_MS;
+        const onlineByTraffic = lastMsg && (Date.now() - parseTimestamp(lastMsg).getTime()) < (connectionWindowMin * 60_000);
         const forcedOfflineRecent = forcedOfflineTs && forcedOfflineTs === lastActivityTs;
         const online = onlineByTraffic && !forcedOfflineRecent;
 
@@ -437,7 +258,7 @@ function renderPowerSummary(summary) {
         if (forcedOfflineRecent) {
             connDetail.textContent = `Last activity ${formatWithRelative(lastActivityTs)} (broker stopped)`;
         } else if (lastMsg) {
-            connDetail.textContent = `Last message ${formatWithRelative(lastMsg)} (window ${CONNECTION_WINDOW_MIN}m)`;
+            connDetail.textContent = `Last message ${formatWithRelative(lastMsg)} (window ${connectionWindowMin}m)`;
         } else {
             connDetail.textContent = `Last activity ${formatWithRelative(lastActivityTs)}`;
         }
@@ -447,270 +268,167 @@ function renderPowerSummary(summary) {
     }
 }
 
-function renderStateTimeline(entries) {
-    if (!entries.length) {
-        stateTimeline.innerHTML = '<div class="state-row"><div class="state-title">No Charging entries yet</div><div class="meta"></div><div class="detail">Waiting for the first state transition…</div></div>';
-        return;
-    }
-
-    const recent = entries.slice().reverse(); // newest first
-    stateTimeline.innerHTML = recent.map(item => {
-        const friendly = formatDate(item.timestamp);
-        const relTime = relativeTime(item.timestamp);
-        const subtitle = relTime ? `${friendly} • ${relTime}` : friendly;
-        const detail = item.detail ? `<div class="detail">${item.detail}</div>` : '';
-        return `
-            <div class="state-row">
-                <div class="state-title">${item.state.trim()}</div>
-                <div class="meta">${subtitle}</div>
-                ${detail}
-            </div>
-        `;
-    }).join('');
-}
-
-function renderTransitions(entries) {
-    if (!entries.length) {
-        transitionsTimeline.innerHTML = '<div class="state-row"><div class="state-title">No transitions yet</div><div class="meta"></div><div class="detail">Will show only when the state value changes</div></div>';
-        return;
-    }
-
-    const recent = entries.slice().reverse(); // newest first
-    transitionsTimeline.innerHTML = recent.map(item => {
-        const friendly = formatDate(item.timestamp);
-        const relTime = relativeTime(item.timestamp);
-        const subtitle = relTime ? `${friendly} • ${relTime}` : friendly;
-        const detail = item.detail ? `<div class="detail">${item.detail}</div>` : '';
-        return `
-            <div class="state-row">
-                <div class="state-title">${item.from} → ${item.to}</div>
-                <div class="meta">${subtitle}</div>
-                ${detail}
-            </div>
-        `;
-    }).join('');
-}
-
-async function fetchLogs() {
-    try {
-        const response = await fetch('log.txt', { cache: 'no-cache' });
-        if (!response.ok) {
-            console.error(`Failed to fetch logs: ${response.status}`);
-            return;
-        }
-
-        const text = await response.text();
-        const lines = text.split('\n');
-
-        // Limit how much we render in the Full log tab to keep the UI responsive.
-        const totalLines = lines.length;
-        const logSlice = totalLines > LOG_LINE_LIMIT ? lines.slice(-LOG_LINE_LIMIT) : lines;
-        const reversed = [...logSlice].reverse().join('\n');
-        const notice = totalLines > LOG_LINE_LIMIT
-            ? `(showing last ${LOG_LINE_LIMIT} of ${totalLines} lines)\n`
-            : '';
-        logContent.textContent = notice + reversed;
-
-        const powerSummary = extractPowerSummary(lines);
-        renderPowerSummary(powerSummary);
-
-        const stateEntries = [];
-        for (const line of lines) {
-            const match = stateRegex.exec(line);
-            if (match) {
-                const rawState = match[2];
-                const normalized = normalizeState(rawState);
-                const detail = match[3]?.trim() ?? '';
-                stateEntries.push({
-                    timestamp: match[1],
-                    state: normalized,
-                    detail: detail || (normalized !== rawState ? rawState : '')
-                });
-                continue;
-            }
-
-            // Capture app start lines (e.g., "Starting Bluetti DC cycle test...")
-            if (line.includes('Starting Bluetti')) {
-                const tsMatch = tsRegex.exec(line);
-                const ts = tsMatch ? tsMatch[1] : null;
-                if (ts) {
-                    const afterInfo = line.split(' - INFO - ');
-                    const detail = afterInfo.length > 1 ? afterInfo[1].trim() : 'App started';
-                    stateEntries.push({
-                        timestamp: ts,
-                        state: 'APP_START',
-                        detail
-                    });
-                }
-            }
-        }
-
-        // Keep only the last 24h if possible; fallback to all
-        const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
-        const withinDay = stateEntries.filter(e => {
-            const d = new Date(e.timestamp.replace(' ', 'T').replace(',', '.'));
-            return !isNaN(d) && d.getTime() >= dayAgo;
-        });
-        const entriesForView = withinDay.length ? withinDay : stateEntries;
-
-        renderStateTimeline(entriesForView);
-        const transitions = [];
-        let chargingStartTs = null;
-        let offlineStartTs = null; // when electricity disappeared
-        let lastElectricityBackTs = null; // when electricity came back
-        let lastElectricityGoneTs = null; // when electricity disappeared
-        let lastOfflineWaitTs = null; // throttle OFFLINE→WAIT entries
-        let lastWaitOfflineTs = null; // throttle WAIT→OFFLINE entries
-        let offlineSeriesActive = false; // suppress repeat WAIT->OFFLINE within the same outage
-        for (let i = 0; i < entriesForView.length; i++) {
-            const current = entriesForView[i];
-            const prev = entriesForView[i - 1];
-            if (!prev || current.state.trim() === prev.state.trim()) continue;
-            const from = prev.state.trim();
-            const to = current.state.trim();
-            const nowTs = parseTimestamp(current.timestamp);
-            const forceTransition =
-                from.startsWith('Waiting 30.0s before first power check') && to === 'CHARGING';
-
-            // Manage OFFLINE<->WAIT transitions: keep only the first WAIT->OFFLINE in a series; drop all OFFLINE->WAIT and further WAIT->OFFLINE until state leaves OFFLINE/WAIT.
-            const pair = new Set([from, to]);
-            const isOfflineWait = pair.has('WAIT') && pair.has('OFFLINE');
-            if (!forceTransition && isOfflineWait) {
-                if (from === 'WAIT' && to === 'OFFLINE') {
-                    if (offlineSeriesActive) continue; // already recorded this outage
-                    if (lastWaitOfflineTs) {
-                        const deltaSinceLast = nowTs - parseTimestamp(lastWaitOfflineTs);
-                        if (deltaSinceLast >= 0 && deltaSinceLast < OFFLINE_WAIT_COOLDOWN_MS) continue;
-                    }
-                    lastWaitOfflineTs = current.timestamp;
-                    offlineSeriesActive = true; // mark series open
-                } else if (from === 'OFFLINE' && to === 'WAIT') {
-                    continue; // drop recoveries to reduce noise
-                }
-            }
-
-            // Leaving OFFLINE/WAIT resets the series flag
-            if (!pair.has('OFFLINE')) {
-                offlineSeriesActive = false;
-            }
-
-            // Skip immediate duplicate transitions (same from->to) within 2 minutes
-            if (!forceTransition) {
-                const last = transitions[transitions.length - 1];
-                if (last && last.from === from && last.to === to) {
-                    const deltaMs = parseTimestamp(current.timestamp) - parseTimestamp(last.timestamp);
-                    if (deltaMs >= 0 && deltaMs < 2 * 60 * 1000) continue;
-                }
-            }
-
-            // Track starts for duration calculations
-            if (to === 'CHARGING') {
-                chargingStartTs = current.timestamp;
-            }
-
-            let detail = current.detail;
-
-            // Custom descriptions
-            if (from === 'Waiting 30.0s before first power check' && to === 'CHARGING') {
-                detail = 'electricity back — starting charge';
-            } else if (from === 'CHARGING' && to === 'WAIT') {
-                if (chargingStartTs) {
-                    const started = parseTimestamp(chargingStartTs);
-                    const duration = nowTs - started;
-                    const durText = formatDuration(duration);
-                    detail = `finished charging${durText ? ` (time charging: ${durText})` : ''}`;
-                } else {
-                    detail = 'finished charging';
-                }
-                chargingStartTs = null;
-            } else if (from === 'OFFLINE' && to === 'WAIT') {
-                continue; // suppressed
-            } else if (from === 'WAIT' && to === 'OFFLINE') {
-                detail = 'electricity disappeared';
-            }
-
-            transitions.push({
-                timestamp: current.timestamp,
-                from,
-                to,
-                detail
-            });
-            prevTransitionTs = current.timestamp;
-        }
-        renderTransitions(transitions);
-    } catch (error) {
-        console.error('Error fetching logs:', error);
-    }
-}
-
-async function fetchBoilerLogs() {
-    try {
-        const response = await fetch('boiler.log', { cache: 'no-cache' });
-        if (!response.ok) {
-            return;
-        }
-        const text = await response.text();
-        const lines = text.split('\n');
-        const totalLines = lines.length;
-        const logSlice = totalLines > BOILER_LOG_LIMIT ? lines.slice(-BOILER_LOG_LIMIT) : lines;
-        boilerRunInterval = parseBoilerRunIntervals(logSlice);
-        const reversed = [...logSlice].reverse().join('\n');
-        const notice = totalLines > BOILER_LOG_LIMIT
-            ? `(showing last ${BOILER_LOG_LIMIT} of ${totalLines} lines)\n`
-            : '';
-        boilerLogContent.textContent = notice + reversed;
-    } catch (error) {
-        console.error('Error fetching boiler logs:', error);
-    }
-}
-
-async function fetchBoilerState() {
+function renderBoilerCard(boiler) {
     if (!boilerCard || !boilerCardValue || !boilerCardMeta) return;
-    try {
-        const response = await fetch('boiler_state.json', { cache: 'no-cache' });
-        if (!response.ok) {
-            boilerCardValue.textContent = `Unavailable (${response.status})`;
-            boilerCardMeta.textContent = 'Boiler state file not reachable';
-            boilerCardMeta2.textContent = '';
-            boilerCard.className = 'status-card boiler-card';
-            return;
-        }
-        const data = await response.json();
-        const completed = Boolean(data.completed);
-        const hasWindow = Boolean(data.window_start && data.window_end);
-        const windowText = hasWindow ? `${data.window_start}\u2013${data.window_end}` : '';
-        const totalText = formatSeconds(data.total_run_sec) || 'configured quota';
-        const remainingText = formatSeconds(data.remaining_sec);
-        const updated = data.last_update_ts ? formatWithRelative(data.last_update_ts) : 'n/a';
-        const dateLabel = data.date ? formatDateOnly(data.date) : 'today';
-        const interval = boilerRunInterval && boilerRunInterval.date === data.date ? boilerRunInterval : null;
-        const runText = interval && interval.intervals.length
-            ? `Runs: ${interval.intervals.map(item => `${item.start}${item.end ? `\u2013${item.end}` : '\u2013\u2026'}`).join(', ')}`
-            : '';
 
-        const mainText = completed ? 'COMPLETE' : 'INCOMPLETE';
-        const meta1 = completed
-            ? `${dateLabel} • Ran full window${hasWindow ? ` ${windowText}` : ''}`
-            : `${dateLabel} • Remaining ${remainingText || 'unknown'}${hasWindow ? ` (${windowText})` : ''}`;
-        boilerCardValue.textContent = mainText;
-        boilerCardValue.className = `value ${completed ? 'on' : 'off'}`;
-        boilerCardMeta.textContent = meta1;
-        boilerCardMeta2.textContent = runText;
-        boilerCard.className = `status-card boiler-card ${completed ? 'ok' : ''}`;
-    } catch (error) {
+    if (!boiler) {
         boilerCardValue.textContent = 'Unavailable';
-        boilerCardMeta.textContent = 'Error reading boiler state';
+        boilerCardMeta.textContent = 'No boiler data in system status';
         boilerCardMeta2.textContent = '';
         boilerCard.className = 'status-card boiler-card';
-        console.error('Error fetching boiler state:', error);
+        return;
+    }
+
+    const completed = Boolean(boiler.completed);
+    const hasWindow = Boolean(boiler.window_start && boiler.window_end);
+    const windowText = hasWindow ? `${boiler.window_start}-${boiler.window_end}` : '';
+    const remainingText = formatSeconds(boiler.remaining_sec);
+    const updated = boiler.last_update_ts ? formatWithRelative(boiler.last_update_ts) : 'n/a';
+    const dateLabel = boiler.date ? formatDateOnly(boiler.date) : 'today';
+
+    const mainText = completed ? 'COMPLETE' : 'INCOMPLETE';
+    const meta1 = completed
+        ? `${dateLabel} • Ran full window${windowText ? ` ${windowText}` : ''}`
+        : `${dateLabel} • Remaining ${remainingText || 'unknown'}${windowText ? ` (${windowText})` : ''}`;
+
+    boilerCardValue.textContent = mainText;
+    boilerCardValue.className = `value ${completed ? 'on' : 'off'}`;
+    boilerCardMeta.textContent = meta1;
+    boilerCardMeta2.textContent = `Updated ${updated}`;
+    boilerCard.className = `status-card boiler-card ${completed ? 'ok' : ''}`;
+}
+
+function renderChargingState(chargingState) {
+    if (!chargingStateValue || !chargingStateMeta) return;
+    if (!chargingState || !chargingState.current_state) {
+        chargingStateValue.textContent = '—';
+        chargingStateMeta.textContent = 'Waiting for state…';
+        return;
+    }
+
+    chargingStateValue.textContent = chargingState.current_state;
+    const transition = chargingState.last_transition;
+    if (transition?.from && transition?.to) {
+        const reason = transition.reason ? ` (${transition.reason})` : '';
+        chargingStateMeta.textContent = `${transition.from} -> ${transition.to}${reason} • ${formatWithRelative(chargingState.updated_at || transition.timestamp)}`;
+        return;
+    }
+    chargingStateMeta.textContent = `Updated ${formatWithRelative(chargingState.updated_at)}`;
+}
+
+async function fetchStatus() {
+    try {
+        const response = await fetch('/api/status', { cache: 'no-cache' });
+        if (!response.ok) {
+            return;
+        }
+
+        const data = await response.json();
+        if (data?.connection?.window_min && Number.isFinite(Number(data.connection.window_min))) {
+            connectionWindowMin = Number(data.connection.window_min);
+        }
+
+        renderPowerSummary(buildPowerSummary(data));
+        renderBoilerCard(data?.boiler || null);
+        renderChargingState(data?.charging_state || null);
+    } catch (error) {
+        console.error('Error fetching status:', error);
     }
 }
 
-// Default to transitions view on load
-setView(mobileQuery.matches ? 'status' : 'transitions');
-setInterval(fetchLogs, 2000);
-fetchLogs();
-setInterval(fetchBoilerLogs, 5000);
-fetchBoilerLogs();
-setInterval(fetchBoilerState, 15000);
-fetchBoilerState();
+function cancelLogsFetch() {
+    // Leaving the Logs tab should immediately cancel any pending fetch.
+    if (logFetchController) {
+        logFetchController.abort();
+        logFetchController = null;
+    }
+    logFetchInFlight = false;
+}
+
+async function fetchCombinedLogs(force = false) {
+    if (logFetchInFlight) {
+        if (!force) return;
+        cancelLogsFetch();
+    }
+
+    const controller = new AbortController();
+    logFetchController = controller;
+    logFetchInFlight = true;
+    renderLogTextMessage('Loading logs...');
+
+    try {
+        const response = await fetch(`/api/logs?limit=${DEFAULT_LOG_LIMIT}`, {
+            cache: 'no-cache',
+            signal: controller.signal
+        });
+
+        const payload = await response.json().catch(() => null);
+        if (!response.ok || !payload?.ok) {
+            const errorMsg = payload?.error?.message || `Failed to fetch logs (${response.status})`;
+            renderLogTextMessage(errorMsg);
+            return;
+        }
+
+        if (Array.isArray(payload.sources) && payload.sources.length) {
+            renderLogSources(payload.sources);
+            return;
+        }
+
+        if (typeof payload.logs === 'string' && payload.logs.trim()) {
+            const parsed = parseLegacyCombinedLogs(payload.logs);
+            if (parsed.length) {
+                parsed.forEach(section => {
+                    section.lines = [...section.lines].reverse();
+                });
+                renderLogSources(parsed);
+            } else {
+                renderLogTextMessage(payload.logs.split('\n').reverse().join('\n'));
+            }
+            return;
+        }
+
+        renderLogTextMessage('No logs available.');
+    } catch (error) {
+        if (error.name === 'AbortError') return;
+        console.error('Error fetching logs:', error);
+        renderLogTextMessage('Error fetching logs.');
+    } finally {
+        if (logFetchController === controller) {
+            logFetchController = null;
+            logFetchInFlight = false;
+        }
+    }
+}
+
+function setView(view) {
+    const previousView = currentView;
+    currentView = view;
+    const isDesktop = isDesktopLayout();
+
+    statusView.classList.toggle('hidden', !isDesktop && view !== 'status');
+    logView.classList.toggle('hidden', view !== 'log');
+    viewButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.view === view));
+
+    if (view === 'log' && previousView !== 'log') {
+        fetchCombinedLogs(false);
+    }
+    if (previousView === 'log' && view !== 'log') {
+        cancelLogsFetch();
+    }
+}
+
+window.addEventListener('resize', () => {
+    setView(currentView);
+});
+
+viewButtons.forEach(btn => {
+    btn.addEventListener('click', () => setView(btn.dataset.view));
+});
+
+refreshLogsBtn.addEventListener('click', () => {
+    fetchCombinedLogs(true);
+});
+
+setView('status');
+fetchStatus();
+setInterval(fetchStatus, STATUS_REFRESH_MS);

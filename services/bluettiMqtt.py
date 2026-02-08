@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 import subprocess
 import logging
@@ -6,6 +7,7 @@ import shutil
 import threading
 from models.bluetti import BluettiStatus
 import paho.mqtt.client as mqtt
+from services.runtime_status import runtime_status_store
 
 
 class BluettiMQTTService:
@@ -116,11 +118,62 @@ class BluettiMQTTService:
             "dc_input_power": ("dc_input_power", float),
         }
 
+        if "pack_details2" in topic:
+            pack = self._extract_pack_details(payload)
+            self.status.update_status("pack_details2_percent", pack["percent"])
+            self.status.update_status("pack_details2_voltage", pack["voltage"])
+            try:
+                runtime_status_store.update_bluetti(self.status.get_status())
+            except Exception:
+                logging.debug("Runtime status update failed", exc_info=True)
+            return
+
+        if "pack_details3" in topic:
+            pack = self._extract_pack_details(payload)
+            self.status.update_status("pack_details3_percent", pack["percent"])
+            self.status.update_status("pack_details3_voltage", pack["voltage"])
+            try:
+                runtime_status_store.update_bluetti(self.status.get_status())
+            except Exception:
+                logging.debug("Runtime status update failed", exc_info=True)
+            return
+
         for key, (attr, transform) in topic_map.items():
             if key in topic:
                 value = transform(payload)
                 self.status.update_status(attr, value)
+                try:
+                    runtime_status_store.update_bluetti(self.status.get_status())
+                except Exception:
+                    logging.debug("Runtime status update failed", exc_info=True)
                 break
+
+    @staticmethod
+    def _extract_pack_details(payload: str) -> dict[str, float | None]:
+        """Extract additional battery pack details from JSON or plain numeric payload."""
+        try:
+            parsed = json.loads(payload)
+        except Exception:
+            parsed = payload
+
+        if isinstance(parsed, dict):
+            percent = parsed.get("percent")
+            voltage = parsed.get("voltage")
+        else:
+            percent = parsed
+            voltage = None
+
+        try:
+            percent_value = float(percent) if percent is not None else None
+        except (TypeError, ValueError):
+            percent_value = None
+
+        try:
+            voltage_value = float(voltage) if voltage is not None else None
+        except (TypeError, ValueError):
+            voltage_value = None
+
+        return {"percent": percent_value, "voltage": voltage_value}
 
     def start_client(self):
         self.client.loop_start()

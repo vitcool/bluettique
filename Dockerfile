@@ -1,7 +1,6 @@
-# Use a lightweight Python image
 FROM python:3.11-slim
 
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     bluez \
     bluetooth \
     libbluetooth-dev \
@@ -10,27 +9,22 @@ RUN apt-get update && apt-get install -y \
     tzdata \
     procps \
     mosquitto \
-    mosquitto-clients
+    mosquitto-clients \
+    && rm -rf /var/lib/apt/lists/*
 
-# Set the working directory in the container
 WORKDIR /app
 
-# Copy the current directory contents into the container at /app
-COPY . /app
-
-# Configure mosquitto with the repo config
-RUN mkdir -p /etc/mosquitto && cp /app/mosquitto.conf /etc/mosquitto/mosquitto.conf
-
-# Install virtualenv and create a virtual environment
 RUN python -m venv /venv
 
-# Ensure the virtual environment binaries are first on PATH
 ENV PATH="/venv/bin:$PATH"
-
-# Set the timezone
 ENV TZ=Europe/Kyiv
 
-# Install any dependencies if needed (e.g., if requirements.txt exists)
-RUN pip install --no-cache-dir -r requirements.txt
+# Install dependencies in a cache-friendly layer.
+# This layer is reused as long as requirements.txt does not change.
+COPY requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
-CMD ["sh", "-c", "mosquitto -c /etc/mosquitto/mosquitto.conf & python main.py & python3 -m http.server 8080 --directory logs/webapp & wait"]
+# Copy app source last so code edits do not invalidate dependency layers.
+COPY . /app
+
+CMD ["sh", "-c", "mosquitto -c /app/mosquitto.conf & python main.py & wait"]

@@ -8,6 +8,8 @@ from datetime import datetime, timedelta, time as dtime
 from typing import Optional, Tuple
 
 from services.tapo import TapoService
+from services.runtime_status import runtime_status_store
+from utils.logger import create_default_formatter
 
 
 # Lightweight clock wrapper to ease testing.
@@ -95,8 +97,7 @@ class BoilerScheduler:
         logger = logging.getLogger("boiler_scheduler")
         if not logger.handlers:
             handler = logging.FileHandler(self.config.log_file)
-            formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-            handler.setFormatter(formatter)
+            handler.setFormatter(create_default_formatter())
             logger.addHandler(handler)
             logger.setLevel(logging.INFO)
             logger.propagate = False
@@ -182,6 +183,10 @@ class BoilerScheduler:
             "window_end": self.config.window_end.strftime("%H:%M"),
             "total_run_sec": self.config.total_run_sec,
         }
+        try:
+            runtime_status_store.set_boiler(state)
+        except Exception:
+            self.logger.debug("Boiler: Failed to publish runtime status", exc_info=True)
         _ensure_dir(self.config.state_file)
         try:
             with open(self.config.state_file, "w", encoding="utf-8") as f:

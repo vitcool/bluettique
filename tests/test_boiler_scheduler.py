@@ -1,5 +1,6 @@
 import json
 from datetime import datetime, timedelta, time as dtime
+from types import SimpleNamespace
 
 import pytest
 
@@ -36,7 +37,7 @@ class FakeTapo:
     async def get_state(self):
         if not self.online:
             raise RuntimeError("offline")
-        return {"device_on": True}
+        return SimpleNamespace(device_on=True)
 
     async def turn_on(self):
         self.on_called += 1

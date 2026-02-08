@@ -4,6 +4,7 @@ import time
 from typing import Optional
 
 from services.charging_supervisor import ChargingSupervisor, ChargingConfig
+from services.runtime_status import runtime_status_store
 
 
 class ChargingState:
@@ -242,14 +243,25 @@ class ChargingStateHandler:
         self.offline_seen_in_wait = False
         self.first_launch = True
         self.offline_recovery_task: Optional[asyncio.Task] = None
+        runtime_status_store.set_charging_state(self._state_name(self.state))
+
+    @staticmethod
+    def _state_name(state: ChargingState) -> str:
+        name = state.__class__.__name__
+        if name.endswith("State"):
+            name = name[:-5]
+        return name.upper()
 
     def set_state(self, state: ChargingState, reason: str | None = None):
+        previous_state_name = self._state_name(self.state)
+        next_state_name = self._state_name(state)
         logging.info(
             "Charging: State transition %s -> %s%s",
             self.state.__class__.__name__,
             state.__class__.__name__,
             f" ({reason})" if reason else "",
         )
+        runtime_status_store.set_charging_transition(previous_state_name, next_state_name, reason)
         self.state = state
         if isinstance(state, WaitPowerState):
             # Require a fresh offline->online observation each time we re-enter WAIT_POWER
