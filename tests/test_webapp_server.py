@@ -92,3 +92,40 @@ def test_api_logs_returns_404_if_missing(monkeypatch, tmp_path):
 
     assert payload["ok"] is False
     assert payload["error"]["code"] == "missing_log_files"
+
+
+def test_api_logs_can_filter_by_source(monkeypatch, tmp_path):
+    charging = tmp_path / "log.txt"
+    boiler = tmp_path / "boiler.log"
+    charging.write_text("c1\nc2\n", encoding="utf-8")
+    boiler.write_text("b1\nb2\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        server,
+        "LOG_SOURCES",
+        [("charging", Path(charging)), ("boiler", Path(boiler))],
+    )
+
+    with server.app.test_client() as client:
+        response = client.get("/api/logs?limit=10&source=boiler")
+        assert response.status_code == 200
+        payload = response.get_json()
+
+    assert payload["ok"] is True
+    assert payload["source_count"] == 1
+    assert payload["sources"][0]["label"] == "boiler"
+    assert payload["sources"][0]["lines"] == ["b1", "b2"]
+
+
+def test_api_logs_rejects_unknown_source(monkeypatch, tmp_path):
+    charging = tmp_path / "log.txt"
+    charging.write_text("c1\n", encoding="utf-8")
+    monkeypatch.setattr(server, "LOG_SOURCES", [("charging", Path(charging))])
+
+    with server.app.test_client() as client:
+        response = client.get("/api/logs?source=boiler")
+        assert response.status_code == 400
+        payload = response.get_json()
+
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "invalid_log_source"

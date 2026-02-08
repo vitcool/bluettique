@@ -49,6 +49,12 @@ def parse_limit(raw_limit: str | None) -> int:
     return max(1, min(limit, MAX_LIMIT))
 
 
+def select_log_sources(raw_source: str | None) -> List[tuple[str, Path]]:
+    if not raw_source:
+        return LOG_SOURCES
+    return [source for source in LOG_SOURCES if source[0] == raw_source]
+
+
 def tail_lines(path: Path, limit: int) -> List[str]:
     if limit <= 0:
         return []
@@ -233,11 +239,28 @@ def index():
 @app.get("/api/logs")
 def api_logs():
     limit = parse_limit(request.args.get("limit"))
+    source = request.args.get("source")
+    selected_sources = select_log_sources(source)
+    if source and not selected_sources:
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": {
+                        "code": "invalid_log_source",
+                        "message": f"Unknown log source '{source}'.",
+                        "available_sources": [label for label, _ in LOG_SOURCES],
+                    },
+                }
+            ),
+            400,
+        )
+
     missing = []
     combined_lines: List[str] = []
     sources_payload: List[Dict[str, Any]] = []
 
-    for label, source_path in LOG_SOURCES:
+    for label, source_path in selected_sources:
         resolved = source_path.resolve()
         if not resolved.exists() or not resolved.is_file():
             missing.append(str(source_path))

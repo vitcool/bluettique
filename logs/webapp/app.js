@@ -1,9 +1,10 @@
 const statusView = document.getElementById('statusView');
 const logView = document.getElementById('logView');
 const logSections = document.getElementById('logSections');
-const logContent = document.getElementById('logContent');
 const refreshLogsBtn = document.getElementById('refreshLogsBtn');
 const viewButtons = document.querySelectorAll('.view-toggle button');
+const statusViewBtn = document.querySelector('.view-toggle button[data-view="status"]');
+const topbar = document.querySelector('.topbar');
 
 const boilerCard = document.getElementById('boilerCard');
 const boilerCardValue = document.getElementById('boilerCardValue');
@@ -33,6 +34,10 @@ let connectionWindowMin = (() => {
 let currentView = 'status';
 let logFetchController = null;
 let logFetchInFlight = false;
+const LOG_VIEW_TO_SOURCE = {
+    'boiler-log': 'boiler',
+    'charging-log': 'charging'
+};
 
 function isDesktopLayout() {
     const width = window.innerWidth || document.documentElement.clientWidth || 0;
@@ -81,6 +86,14 @@ function renderLogSources(sources) {
         const lines = Array.isArray(source?.lines) ? [...source.lines].reverse() : [];
         appendLogSourceSection(label, file, lines);
     });
+}
+
+function renderSingleLogSource(source) {
+    if (!source) {
+        renderLogTextMessage('No logs available.');
+        return;
+    }
+    renderLogSources([source]);
 }
 
 function parseLegacyCombinedLogs(rawLogs) {
@@ -337,7 +350,7 @@ async function fetchStatus() {
 }
 
 function cancelLogsFetch() {
-    // Leaving the Logs tab should immediately cancel any pending fetch.
+    // Leaving a log tab should immediately cancel any pending fetch.
     if (logFetchController) {
         logFetchController.abort();
         logFetchController = null;
@@ -345,7 +358,14 @@ function cancelLogsFetch() {
     logFetchInFlight = false;
 }
 
-async function fetchCombinedLogs(force = false) {
+function isLogView(view) {
+    return Object.prototype.hasOwnProperty.call(LOG_VIEW_TO_SOURCE, view);
+}
+
+async function fetchLogsForView(view, force = false) {
+    const source = LOG_VIEW_TO_SOURCE[view];
+    if (!source) return;
+
     if (logFetchInFlight) {
         if (!force) return;
         cancelLogsFetch();
@@ -357,7 +377,7 @@ async function fetchCombinedLogs(force = false) {
     renderLogTextMessage('Loading logs...');
 
     try {
-        const response = await fetch(`/api/logs?limit=${DEFAULT_LOG_LIMIT}`, {
+        const response = await fetch(`/api/logs?limit=${DEFAULT_LOG_LIMIT}&source=${encodeURIComponent(source)}`, {
             cache: 'no-cache',
             signal: controller.signal
         });
@@ -370,17 +390,19 @@ async function fetchCombinedLogs(force = false) {
         }
 
         if (Array.isArray(payload.sources) && payload.sources.length) {
-            renderLogSources(payload.sources);
+            const selected = payload.sources.find(item => item?.label === source) || payload.sources[0];
+            renderSingleLogSource(selected);
             return;
         }
 
         if (typeof payload.logs === 'string' && payload.logs.trim()) {
             const parsed = parseLegacyCombinedLogs(payload.logs);
             if (parsed.length) {
-                parsed.forEach(section => {
-                    section.lines = [...section.lines].reverse();
-                });
-                renderLogSources(parsed);
+                const selected = parsed.find(item => item?.label === source) || parsed[0];
+                if (selected) {
+                    selected.lines = [...selected.lines].reverse();
+                }
+                renderSingleLogSource(selected);
             } else {
                 renderLogTextMessage(payload.logs.split('\n').reverse().join('\n'));
             }
@@ -400,19 +422,41 @@ async function fetchCombinedLogs(force = false) {
     }
 }
 
+function positionTopbar(normalizedView, isDesktop) {
+    if (!topbar || !statusView || !logView) return;
+
+    // On mobile status view, place tabs above the status cards.
+    if (!isDesktop && normalizedView === 'status') {
+        if (document.body.firstElementChild !== topbar) {
+            document.body.insertBefore(topbar, statusView);
+        }
+        return;
+    }
+
+    // Otherwise keep tabs between status panel and logs panel.
+    if (statusView.nextElementSibling !== topbar) {
+        document.body.insertBefore(topbar, logView);
+    }
+}
+
 function setView(view) {
     const previousView = currentView;
-    currentView = view;
     const isDesktop = isDesktopLayout();
+    const normalizedView = isDesktop && view === 'status' ? 'charging-log' : view;
+    currentView = normalizedView;
+    positionTopbar(normalizedView, isDesktop);
 
-    statusView.classList.toggle('hidden', !isDesktop && view !== 'status');
-    logView.classList.toggle('hidden', view !== 'log');
-    viewButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.view === view));
-
-    if (view === 'log' && previousView !== 'log') {
-        fetchCombinedLogs(false);
+    statusView.classList.toggle('hidden', !isDesktop && normalizedView !== 'status');
+    logView.classList.toggle('hidden', !isLogView(normalizedView));
+    if (statusViewBtn) {
+        statusViewBtn.classList.toggle('hidden', isDesktop);
     }
-    if (previousView === 'log' && view !== 'log') {
+    viewButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.view === normalizedView));
+
+    if (isLogView(normalizedView) && normalizedView !== previousView) {
+        fetchLogsForView(normalizedView, false);
+    }
+    if (isLogView(previousView) && previousView !== normalizedView) {
         cancelLogsFetch();
     }
 }
@@ -426,9 +470,9 @@ viewButtons.forEach(btn => {
 });
 
 refreshLogsBtn.addEventListener('click', () => {
-    fetchCombinedLogs(true);
+    fetchLogsForView(currentView, true);
 });
 
-setView('status');
+setView(isDesktopLayout() ? 'charging-log' : 'status');
 fetchStatus();
 setInterval(fetchStatus, STATUS_REFRESH_MS);
