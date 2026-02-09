@@ -13,6 +13,14 @@ from services.tapo import TapoService
 from services.runtime_status import runtime_status_store
 from logs.webapp.server import run_web_server
 
+
+def _env_int(name: str, default: int, min_value: int = 1, max_value: int = 60000) -> int:
+    try:
+        raw = int(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        raw = default
+    return max(min_value, min(max_value, raw))
+
 async def test_bluetti_dc_cycle(bluetti_controller: BluettiController):
     """Initialize Bluetti, then toggle DC on/off five times with 5s intervals."""
     await bluetti_controller.initialize()
@@ -87,6 +95,14 @@ def _start_web_server():
 
     window_min = int(os.getenv("CONNECTION_WINDOW_MIN", "5"))
     runtime_status_store.set_connection_meta("window_min", window_min)
+    runtime_status_store.set_connection_meta(
+        "status_refresh_ms",
+        _env_int("WEBAPP_STATUS_REFRESH_MS", 2000, min_value=250, max_value=60000),
+    )
+    runtime_status_store.set_connection_meta(
+        "logs_refresh_ms",
+        _env_int("WEBAPP_LOGS_REFRESH_MS", 2000, min_value=250, max_value=60000),
+    )
 
     web_port = int(os.getenv("WEBAPP_PORT", "8080"))
     thread = threading.Thread(target=run_web_server, kwargs={"host": "0.0.0.0", "port": web_port}, daemon=True)

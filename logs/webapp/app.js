@@ -2,6 +2,7 @@ const statusView = document.getElementById('statusView');
 const logView = document.getElementById('logView');
 const logSections = document.getElementById('logSections');
 const refreshLogsBtn = document.getElementById('refreshLogsBtn');
+const logTitle = document.getElementById('logTitle');
 const viewButtons = document.querySelectorAll('.view-toggle button');
 const statusViewBtn = document.querySelector('.view-toggle button[data-view="status"]');
 const topbar = document.querySelector('.topbar');
@@ -22,8 +23,10 @@ const acOutputDetail = document.getElementById('acOutputDetail');
 const chargingStateValue = document.getElementById('chargingStateValue');
 const chargingStateMeta = document.getElementById('chargingStateMeta');
 
-const STATUS_REFRESH_MS = 2000;
+const DEFAULT_STATUS_REFRESH_MS = 2000;
+const DEFAULT_LOG_REFRESH_MS = 2000;
 const DEFAULT_LOG_LIMIT = 800;
+const MAX_UI_LOG_LINES = 5000;
 const urlParams = new URLSearchParams(window.location.search);
 let connectionWindowMin = (() => {
     const val = Number(urlParams.get('conn_window_min'));
@@ -34,9 +37,17 @@ let connectionWindowMin = (() => {
 let currentView = 'status';
 let logFetchController = null;
 let logFetchInFlight = false;
+let logRefreshTimer = null;
+let statusRefreshTimer = null;
+let statusRefreshMs = DEFAULT_STATUS_REFRESH_MS;
+let logRefreshMs = DEFAULT_LOG_REFRESH_MS;
 const LOG_VIEW_TO_SOURCE = {
     'boiler-log': 'boiler',
     'charging-log': 'charging'
+};
+const logSourceState = {
+    boiler: { lines: [], file: 'boiler.log', latestTs: null, initialized: false },
+    charging: { lines: [], file: 'log.txt', latestTs: null, initialized: false }
 };
 
 function isDesktopLayout() {
@@ -54,7 +65,21 @@ function clearLogSections() {
     logSections.innerHTML = '';
 }
 
+function setLogTitle(label, file) {
+    if (!logTitle) return;
+    if (!label && !file) {
+        logTitle.textContent = 'Logs';
+        return;
+    }
+    if (label && file) {
+        logTitle.textContent = `${label} (${file})`;
+        return;
+    }
+    logTitle.textContent = label || file || 'Logs';
+}
+
 function renderLogTextMessage(message) {
+    setLogTitle('Logs', null);
     clearLogSections();
     const pre = document.createElement('pre');
     pre.id = 'logContent';
@@ -84,6 +109,9 @@ function renderLogSources(sources) {
         const label = source?.label || 'log';
         const file = source?.file || 'unknown';
         const lines = Array.isArray(source?.lines) ? [...source.lines].reverse() : [];
+        if (source === sources[0]) {
+            setLogTitle(label, file);
+        }
         appendLogSourceSection(label, file, lines);
     });
 }
@@ -94,6 +122,98 @@ function renderSingleLogSource(source) {
         return;
     }
     renderLogSources([source]);
+}
+
+function getCurrentLogViewport() {
+    const pre = logSections.querySelector('.log-source pre, pre#logContent');
+    if (!pre) return null;
+
+    const maxScrollTop = Math.max(0, pre.scrollHeight - pre.clientHeight);
+    const offsetFromBottom = Math.max(0, maxScrollTop - pre.scrollTop);
+    return {
+        nearTop: pre.scrollTop <= 24,
+        offsetFromBottom,
+        nearBottom: offsetFromBottom <= 24
+    };
+}
+
+function restoreLogViewport(viewport) {
+    if (!viewport) return;
+    const pre = logSections.querySelector('.log-source pre, pre#logContent');
+    if (!pre) return;
+
+    if (viewport.nearTop) {
+        pre.scrollTop = 0;
+        return;
+    }
+
+    if (viewport.nearBottom) {
+        pre.scrollTop = pre.scrollHeight;
+        return;
+    }
+
+    const maxScrollTop = Math.max(0, pre.scrollHeight - pre.clientHeight);
+    pre.scrollTop = Math.max(0, maxScrollTop - viewport.offsetFromBottom);
+}
+
+function getLogState(source) {
+    return logSourceState[source] || null;
+}
+
+function updateLogStateFromSource(source, payload, mode = 'replace') {
+    const state = getLogState(source);
+    if (!state || !payload) return null;
+
+    const incomingLines = Array.isArray(payload.lines) ? payload.lines : [];
+    const file = payload.file || state.file || `${source}.log`;
+
+    if (mode === 'append') {
+        if (incomingLines.length) {
+            const dedupeWindow = state.lines.slice(-2000);
+            const dedupeSet = new Set(dedupeWindow);
+            const uniqueIncoming = incomingLines.filter(line => !dedupeSet.has(line));
+            state.lines = [...state.lines, ...uniqueIncoming];
+        }
+    } else {
+        state.lines = [...incomingLines];
+    }
+
+    if (state.lines.length > MAX_UI_LOG_LINES) {
+        state.lines = state.lines.slice(-MAX_UI_LOG_LINES);
+    }
+
+    if (payload.latest_ts) {
+        state.latestTs = payload.latest_ts;
+    }
+    state.file = file;
+    state.initialized = true;
+    return state;
+}
+
+function renderLogState(source) {
+    const state = getLogState(source);
+    if (!state) {
+        renderLogTextMessage('No logs available.');
+        return;
+    }
+    const viewport = getCurrentLogViewport();
+    renderSingleLogSource({
+        label: source,
+        file: state.file || `${source}.log`,
+        lines: state.lines
+    });
+    restoreLogViewport(viewport);
+}
+
+function buildLogsUrl(source, opts = {}) {
+    const params = new URLSearchParams({
+        limit: String(DEFAULT_LOG_LIMIT),
+        source
+    });
+    if (opts.since) {
+        params.set('since', opts.since);
+    }
+    return `/api/logs?${params.toString()}`;
 }
 
 function parseLegacyCombinedLogs(rawLogs) {
@@ -174,6 +294,12 @@ function formatDateOnly(dateStr) {
     if (parts.length !== 3 || parts.some(n => Number.isNaN(n))) return dateStr;
     const d = new Date(parts[0], parts[1] - 1, parts[2]);
     return isNaN(d.getTime()) ? dateStr : d.toLocaleDateString();
+}
+
+function normalizeRefreshMs(value, fallback) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return fallback;
+    return Math.max(250, Math.min(60000, Math.round(parsed)));
 }
 
 function normalizeOnOff(value) {
@@ -340,6 +466,7 @@ async function fetchStatus() {
         if (data?.connection?.window_min && Number.isFinite(Number(data.connection.window_min))) {
             connectionWindowMin = Number(data.connection.window_min);
         }
+        applyRefreshConfig(data?.connection || {});
 
         renderPowerSummary(buildPowerSummary(data));
         renderBoilerCard(data?.boiler || null);
@@ -365,6 +492,7 @@ function isLogView(view) {
 async function fetchLogsForView(view, force = false) {
     const source = LOG_VIEW_TO_SOURCE[view];
     if (!source) return;
+    const state = getLogState(source);
 
     if (logFetchInFlight) {
         if (!force) return;
@@ -374,10 +502,13 @@ async function fetchLogsForView(view, force = false) {
     const controller = new AbortController();
     logFetchController = controller;
     logFetchInFlight = true;
-    renderLogTextMessage('Loading logs...');
+    const incremental = !force && Boolean(state?.initialized && state?.latestTs);
+    if (!incremental) {
+        renderLogTextMessage('Loading logs...');
+    }
 
     try {
-        const response = await fetch(`/api/logs?limit=${DEFAULT_LOG_LIMIT}&source=${encodeURIComponent(source)}`, {
+        const response = await fetch(buildLogsUrl(source, { since: incremental ? state.latestTs : null }), {
             cache: 'no-cache',
             signal: controller.signal
         });
@@ -391,6 +522,11 @@ async function fetchLogsForView(view, force = false) {
 
         if (Array.isArray(payload.sources) && payload.sources.length) {
             const selected = payload.sources.find(item => item?.label === source) || payload.sources[0];
+            const nextState = updateLogStateFromSource(source, selected, incremental ? 'append' : 'replace');
+            if (nextState) {
+                renderLogState(source);
+                return;
+            }
             renderSingleLogSource(selected);
             return;
         }
@@ -439,6 +575,40 @@ function positionTopbar(normalizedView, isDesktop) {
     }
 }
 
+function ensureLogAutoRefresh() {
+    if (logRefreshTimer) {
+        clearInterval(logRefreshTimer);
+    }
+    logRefreshTimer = setInterval(() => {
+        if (!isLogView(currentView)) return;
+        fetchLogsForView(currentView, false);
+    }, logRefreshMs);
+}
+
+function ensureStatusAutoRefresh() {
+    if (statusRefreshTimer) {
+        clearInterval(statusRefreshTimer);
+    }
+    statusRefreshTimer = setInterval(fetchStatus, statusRefreshMs);
+}
+
+function applyRefreshConfig(connection) {
+    const nextStatusMs = normalizeRefreshMs(connection?.status_refresh_ms, statusRefreshMs);
+    const nextLogMs = normalizeRefreshMs(connection?.logs_refresh_ms, logRefreshMs);
+    const statusChanged = nextStatusMs !== statusRefreshMs;
+    const logsChanged = nextLogMs !== logRefreshMs;
+
+    statusRefreshMs = nextStatusMs;
+    logRefreshMs = nextLogMs;
+
+    if (statusChanged) {
+        ensureStatusAutoRefresh();
+    }
+    if (logsChanged) {
+        ensureLogAutoRefresh();
+    }
+}
+
 function setView(view) {
     const previousView = currentView;
     const isDesktop = isDesktopLayout();
@@ -475,4 +645,5 @@ refreshLogsBtn.addEventListener('click', () => {
 
 setView(isDesktopLayout() ? 'charging-log' : 'status');
 fetchStatus();
-setInterval(fetchStatus, STATUS_REFRESH_MS);
+ensureStatusAutoRefresh();
+ensureLogAutoRefresh();

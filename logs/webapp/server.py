@@ -49,6 +49,42 @@ def parse_limit(raw_limit: str | None) -> int:
     return max(1, min(limit, MAX_LIMIT))
 
 
+def normalize_datetime(dt: datetime) -> datetime:
+    if dt.tzinfo is None:
+        return dt
+    return dt.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def parse_timestamp(raw_ts: str | None) -> datetime | None:
+    if not raw_ts:
+        return None
+
+    normalized = raw_ts.strip()
+    if not normalized:
+        return None
+
+    iso_candidate = normalized.replace(" ", "T")
+    if iso_candidate.endswith("Z"):
+        iso_candidate = f"{iso_candidate[:-1]}+00:00"
+    try:
+        return normalize_datetime(datetime.fromisoformat(iso_candidate))
+    except ValueError:
+        pass
+
+    for fmt in ("%Y-%m-%d %H:%M:%S,%f", "%Y-%m-%d %H:%M:%S"):
+        try:
+            return datetime.strptime(normalized, fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def parse_since(raw_since: str | None) -> datetime | None:
+    if raw_since is None:
+        return None
+    return parse_timestamp(raw_since)
+
+
 def select_log_sources(raw_source: str | None) -> List[tuple[str, Path]]:
     if not raw_source:
         return LOG_SOURCES
@@ -97,6 +133,33 @@ def parse_log_line(line: str) -> tuple[str | None, str | None]:
         if match:
             return match.group("ts"), match.group("msg")
     return None, None
+
+
+def extract_latest_log_ts(lines: List[str]) -> str | None:
+    latest_ts: str | None = None
+    latest_dt: datetime | None = None
+
+    for line in lines:
+        ts, _ = parse_log_line(line)
+        dt = parse_timestamp(ts)
+        if dt is None:
+            continue
+        if latest_dt is None or dt > latest_dt:
+            latest_dt = dt
+            latest_ts = ts
+    return latest_ts
+
+
+def filter_lines_since(lines: List[str], since_dt: datetime) -> List[str]:
+    filtered: List[str] = []
+    for line in lines:
+        ts, _ = parse_log_line(line)
+        dt = parse_timestamp(ts)
+        if dt is None:
+            continue
+        if dt > since_dt:
+            filtered.append(line)
+    return filtered
 
 
 def read_json_file(path: Path) -> Dict[str, Any] | None:
@@ -240,6 +303,22 @@ def index():
 def api_logs():
     limit = parse_limit(request.args.get("limit"))
     source = request.args.get("source")
+    since_raw = request.args.get("since")
+    since_dt = parse_since(since_raw)
+    if since_raw is not None and since_dt is None:
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": {
+                        "code": "invalid_since",
+                        "message": "Invalid 'since' value. Use ISO datetime or log timestamp format.",
+                    },
+                }
+            ),
+            400,
+        )
+
     selected_sources = select_log_sources(source)
     if source and not selected_sources:
         return (
@@ -266,12 +345,15 @@ def api_logs():
             missing.append(str(source_path))
             continue
 
-        lines = tail_lines(resolved, limit)
+        all_lines = tail_lines(resolved, limit)
+        latest_ts = extract_latest_log_ts(all_lines)
+        lines = filter_lines_since(all_lines, since_dt) if since_dt else all_lines
         sources_payload.append(
             {
                 "label": label,
                 "file": source_path.name,
                 "line_count": len(lines),
+                "latest_ts": latest_ts,
                 "lines": lines,
             }
         )
@@ -297,6 +379,7 @@ def api_logs():
             "ok": True,
             "limit": limit,
             "source_count": len(sources_payload),
+            "since": since_raw,
             "missing_files": missing,
             "sources": sources_payload,
             "logs": "\n".join(combined_lines),
