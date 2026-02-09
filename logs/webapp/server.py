@@ -19,11 +19,13 @@ STATUS_SOURCE_CANDIDATES = [
     BASE_DIR / "../system_status.json",
 ]
 BOILER_STATE_PATH = BASE_DIR / "../boiler_logs/boiler_state.json"
+BOILER_LOG_PATH = BASE_DIR / "../boiler_logs/boiler.log"
 CHARGING_LOG_PATH = BASE_DIR / "../log.txt"
 DEFAULT_LIMIT = 500
 MAX_LIMIT = 5000
 MAX_READ_BYTES = 2 * 1024 * 1024
 STATE_SCAN_LINE_LIMIT = 4000
+BOILER_INTERVAL_SCAN_LINE_LIMIT = 12000
 
 TRANSITION_RE = re.compile(
     r"Charging:\s+State transition\s+([A-Za-z0-9_]+)\s+->\s+([A-Za-z0-9_]+)(?:\s+\((.+)\))?"
@@ -35,6 +37,8 @@ LOG_LINE_RE_NEW = re.compile(
 LOG_LINE_RE_OLD = re.compile(
     r"^(?P<ts>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) - [^-]+ - (?P<msg>.*)$"
 )
+BOILER_SOCKET_ON_RE = re.compile(r"\bBoiler:\s+Turned socket ON\b")
+BOILER_SOCKET_OFF_RE = re.compile(r"\bBoiler:\s+Turned socket OFF\b")
 
 app = Flask(__name__, static_folder=str(BASE_DIR), static_url_path="")
 
@@ -242,6 +246,42 @@ def extract_last_message_ts() -> str | None:
     return None
 
 
+def extract_boiler_on_intervals(target_date: str | None) -> List[Dict[str, Any]]:
+    resolved = BOILER_LOG_PATH.resolve()
+    if not resolved.exists() or not resolved.is_file():
+        return []
+
+    lines = tail_lines(resolved, BOILER_INTERVAL_SCAN_LINE_LIMIT)
+    intervals: List[Dict[str, Any]] = []
+    open_start: str | None = None
+
+    for line in lines:
+        ts, msg = parse_log_line(line)
+        if not ts or not msg:
+            continue
+
+        dt = parse_timestamp(ts)
+        if dt is None:
+            continue
+
+        if target_date and dt.date().isoformat() != target_date:
+            continue
+
+        if BOILER_SOCKET_ON_RE.search(msg):
+            if open_start is None:
+                open_start = ts
+            continue
+
+        if BOILER_SOCKET_OFF_RE.search(msg) and open_start is not None:
+            intervals.append({"start": open_start, "end": ts})
+            open_start = None
+
+    if open_start is not None:
+        intervals.append({"start": open_start, "end": None})
+
+    return intervals
+
+
 def build_status_payload() -> Dict[str, Any]:
     base_status = load_status_base()
     runtime_status = runtime_status_store.snapshot()
@@ -264,6 +304,14 @@ def build_status_payload() -> Dict[str, Any]:
         boiler = read_json_file(BOILER_STATE_PATH)
         if boiler is not None:
             status_payload["boiler"] = boiler
+    boiler_payload = status_payload.get("boiler")
+    if isinstance(boiler_payload, dict):
+        normalized_boiler = dict(boiler_payload)
+        target_date = normalized_boiler.get("date")
+        if not isinstance(target_date, str):
+            target_date = None
+        normalized_boiler["on_intervals"] = extract_boiler_on_intervals(target_date)
+        status_payload["boiler"] = normalized_boiler
 
     runtime_charging = runtime_status.get("charging_state")
     if (

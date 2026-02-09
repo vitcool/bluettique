@@ -129,3 +129,46 @@ def test_api_logs_rejects_unknown_source(monkeypatch, tmp_path):
 
     assert payload["ok"] is False
     assert payload["error"]["code"] == "invalid_log_source"
+
+
+def test_api_status_includes_boiler_on_intervals(monkeypatch, tmp_path):
+    runtime_status_store.reset()
+    runtime_status_store.set_boiler(
+        {
+            "date": "2026-02-08",
+            "remaining_sec": 0.0,
+            "last_state": "Completed",
+            "last_update_ts": "2026-02-08T02:00:00",
+            "completed": True,
+            "window_start": "00:00",
+            "window_end": "06:00",
+            "total_run_sec": 7200,
+        }
+    )
+
+    boiler_log = tmp_path / "boiler.log"
+    boiler_log.write_text(
+        "\n".join(
+            [
+                "2026-02-08 00:10:00 | INFO | boiler_scheduler:1 | Boiler: Turned socket ON",
+                "2026-02-08 00:40:00 | INFO | boiler_scheduler:1 | Boiler: Turned socket OFF",
+                "2026-02-08 01:00:00 | INFO | boiler_scheduler:1 | Boiler: Turned socket ON",
+                "2026-02-08 01:30:00 | INFO | boiler_scheduler:1 | Boiler: Turned socket OFF",
+                "2026-02-09 00:05:00 | INFO | boiler_scheduler:1 | Boiler: Turned socket ON",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(server, "BOILER_LOG_PATH", Path(boiler_log))
+
+    with server.app.test_client() as client:
+        response = client.get("/api/status")
+        assert response.status_code == 200
+        payload = response.get_json()
+
+    assert payload["ok"] is True
+    assert payload["boiler"]["on_intervals"] == [
+        {"start": "2026-02-08 00:10:00", "end": "2026-02-08 00:40:00"},
+        {"start": "2026-02-08 01:00:00", "end": "2026-02-08 01:30:00"},
+    ]

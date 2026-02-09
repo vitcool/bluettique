@@ -92,6 +92,17 @@ class BoilerScheduler:
 
         self._load_persisted_state()
 
+    def _log_tick_snapshot(self, now: datetime, start: datetime, end: datetime, in_window: bool) -> None:
+        self.logger.info(
+            "Boiler: Tick now=%s state=%s remaining=%.0fs in_window=%s window=%s..%s",
+            now.isoformat(timespec="seconds"),
+            self.state,
+            self.remaining_sec,
+            in_window,
+            start.isoformat(timespec="seconds"),
+            end.isoformat(timespec="seconds"),
+        )
+
     def _setup_logger(self):
         _ensure_dir(self.config.log_file)
         logger = logging.getLogger("boiler_scheduler")
@@ -243,6 +254,7 @@ class BoilerScheduler:
     async def _tick(self, now: datetime):
         start, end = self._window_bounds(now)
         in_window = start <= now < end
+        self._log_tick_snapshot(now, start, end, in_window)
 
         # Date rollover handling
         if self.current_date != now.date().isoformat():
@@ -255,7 +267,13 @@ class BoilerScheduler:
             await self._ensure_off()
             self.state = BoilerState.EXPIRED
             self._persist_state(now)
-            return self._seconds_until_window(now)
+            sleep_for = self._seconds_until_window(now)
+            self.logger.info(
+                "Boiler: Outside window; next window starts in %.0fs at %s",
+                sleep_for,
+                (now + timedelta(seconds=sleep_for)).isoformat(timespec="seconds"),
+            )
+            return sleep_for
 
         # Inside window
         if self.remaining_sec <= 0:
@@ -334,6 +352,16 @@ class BoilerScheduler:
             self.logger.info("Boiler: Scheduler disabled; skipping run loop.")
             return
         self.logger.info("Boiler: Scheduler starting.")
+        self.logger.info(
+            "Boiler: Active config window=%s-%s total_run_sec=%s poll_sec=%s active_w_threshold=%s ip=%s state_file=%s",
+            self.config.window_start.strftime("%H:%M"),
+            self.config.window_end.strftime("%H:%M"),
+            self.config.total_run_sec,
+            self.config.poll_sec,
+            self.config.active_w_threshold,
+            self.config.ip_address or "n/a",
+            self.config.state_file,
+        )
         while True:
             now = self.clock.now()
             try:
@@ -341,4 +369,11 @@ class BoilerScheduler:
             except Exception:
                 self.logger.warning("Boiler: Unexpected error in tick", exc_info=True)
                 sleep_for = self.config.poll_sec
-            await asyncio.sleep(max(sleep_for, 1))
+            sleep_for = max(sleep_for, 1)
+            wake_at = self.clock.now() + timedelta(seconds=sleep_for)
+            self.logger.info(
+                "Boiler: Sleeping for %.0fs (wake at %s)",
+                sleep_for,
+                wake_at.isoformat(timespec="seconds"),
+            )
+            await asyncio.sleep(sleep_for)

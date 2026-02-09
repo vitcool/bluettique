@@ -167,12 +167,21 @@ h1 {
     border-color: rgba(52, 211, 153, 0.5);
 }
 
+.boiler-card.running {
+    background: linear-gradient(135deg, rgba(251, 191, 36, 0.11), rgba(15, 23, 42, 0.9));
+    border-color: rgba(251, 191, 36, 0.55);
+}
+
 .boiler-card .value {
     color: var(--danger);
 }
 
 .boiler-card.ok .value {
     color: var(--success);
+}
+
+.boiler-card .value.warn {
+    color: var(--warning);
 }
 
 .panel {

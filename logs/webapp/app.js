@@ -280,20 +280,41 @@ function pickLatestTimestamp(timestamps) {
     return dated[0].ts;
 }
 
-function formatSeconds(sec) {
-    if (!Number.isFinite(sec) || sec < 0) return '';
-    const totalMinutes = Math.round(sec / 60);
-    const hours = Math.floor(totalMinutes / 60);
-    const mins = totalMinutes % 60;
-    return `${hours.toString().padStart(2, '0')}h ${mins.toString().padStart(2, '0')}m`;
-}
-
 function formatDateOnly(dateStr) {
     if (!dateStr) return '';
     const parts = dateStr.split('-').map(Number);
     if (parts.length !== 3 || parts.some(n => Number.isNaN(n))) return dateStr;
     const d = new Date(parts[0], parts[1] - 1, parts[2]);
     return isNaN(d.getTime()) ? dateStr : d.toLocaleDateString();
+}
+
+function formatTimeOnly(ts) {
+    const d = parseTimestamp(ts);
+    if (isNaN(d.getTime())) return ts || '';
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function formatBoilerInterval(interval) {
+    const startTs = interval?.start || null;
+    if (!startTs) return '';
+
+    const start = formatTimeOnly(startTs);
+    const endTs = interval?.end || null;
+    const end = endTs ? formatTimeOnly(endTs) : 'now';
+
+    const startDate = parseTimestamp(startTs);
+    const endDate = endTs ? parseTimestamp(endTs) : new Date();
+    let durationText = '';
+    if (!isNaN(startDate.getTime()) && !isNaN(endDate.getTime())) {
+        const mins = Math.max(0, Math.round((endDate.getTime() - startDate.getTime()) / 60000));
+        const hours = Math.floor(mins / 60);
+        const remMins = mins % 60;
+        if (hours > 0 && remMins > 0) durationText = `${hours}h ${remMins}m`;
+        else if (hours > 0) durationText = `${hours}h`;
+        else durationText = `${remMins}m`;
+    }
+
+    return durationText ? `${start}-${end} (${durationText})` : `${start}-${end}`;
 }
 
 function normalizeRefreshMs(value, fallback) {
@@ -419,22 +440,23 @@ function renderBoilerCard(boiler) {
     }
 
     const completed = Boolean(boiler.completed);
-    const hasWindow = Boolean(boiler.window_start && boiler.window_end);
-    const windowText = hasWindow ? `${boiler.window_start}-${boiler.window_end}` : '';
-    const remainingText = formatSeconds(boiler.remaining_sec);
-    const updated = boiler.last_update_ts ? formatWithRelative(boiler.last_update_ts) : 'n/a';
+    const isRunning = String(boiler.last_state || '').toLowerCase() === 'running';
+    const intervals = Array.isArray(boiler.on_intervals) ? boiler.on_intervals : [];
+    const intervalText = intervals
+        .map(formatBoilerInterval)
+        .filter(Boolean)
+        .join(' • ');
     const dateLabel = boiler.date ? formatDateOnly(boiler.date) : 'today';
 
-    const mainText = completed ? 'COMPLETE' : 'INCOMPLETE';
-    const meta1 = completed
-        ? `${dateLabel} • Ran full window${windowText ? ` ${windowText}` : ''}`
-        : `${dateLabel} • Remaining ${remainingText || 'unknown'}${windowText ? ` (${windowText})` : ''}`;
+    const mainText = completed ? 'COMPLETE' : (isRunning ? 'RUNNING' : 'INCOMPLETE');
+    const meta1 = dateLabel;
+    const meta2 = intervalText ? `was running during: ${intervalText}` : 'was running during: —';
 
     boilerCardValue.textContent = mainText;
-    boilerCardValue.className = `value ${completed ? 'on' : 'off'}`;
+    boilerCardValue.className = `value ${completed ? 'on' : (isRunning ? 'warn' : 'off')}`;
     boilerCardMeta.textContent = meta1;
-    boilerCardMeta2.textContent = `Updated ${updated}`;
-    boilerCard.className = `status-card boiler-card ${completed ? 'ok' : ''}`;
+    boilerCardMeta2.textContent = meta2;
+    boilerCard.className = `status-card boiler-card ${completed ? 'ok' : (isRunning ? 'running' : '')}`;
 }
 
 function renderChargingState(chargingState) {
