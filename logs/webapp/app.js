@@ -637,6 +637,7 @@ function setView(view) {
     const normalizedView = isDesktop && view === 'status' ? 'charging-log' : view;
     currentView = normalizedView;
     positionTopbar(normalizedView, isDesktop);
+    document.body.classList.toggle('mobile-status-view', !isDesktop && normalizedView === 'status');
 
     statusView.classList.toggle('hidden', !isDesktop && normalizedView !== 'status');
     logView.classList.toggle('hidden', !isLogView(normalizedView));

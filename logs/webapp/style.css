@@ -338,5 +338,27 @@ pre {
 }
 
 @media (max-width: 1024px) {
+    body {
+        height: auto;
+        min-height: 100dvh;
+        overflow-x: hidden;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .topbar {
+        position: sticky;
+        top: 0;
+        z-index: 30;
+        padding-top: 6px;
+        padding-bottom: 6px;
+        background: linear-gradient(180deg, rgba(11, 18, 33, 0.96) 0%, rgba(11, 18, 33, 0.84) 70%, rgba(11, 18, 33, 0) 100%);
+        backdrop-filter: blur(6px);
+    }
+
+    body.mobile-status-view #logView {
+        display: none !important;
+    }
+
     .mobile-only { display: inline-block; }
 }
