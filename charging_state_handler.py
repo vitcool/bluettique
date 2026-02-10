@@ -282,6 +282,11 @@ class ChargingStateHandler:
             try:
                 poll_interval = self.config.stable_power_interval_sec
                 zero_duration = 0.0
+                ac_retry_attempts = 0
+                ac_retry_limit_logged = False
+                retry_interval = max(float(self.config.ac_retry_interval_sec), 0.1)
+                max_retries = int(self.config.ac_retry_max_attempts)
+                last_retry_at = 0.0
 
                 while True:
                     await asyncio.sleep(poll_interval)
@@ -290,8 +295,43 @@ class ChargingStateHandler:
                     ac_power = status.get("ac_output_power")
 
                     if not ac_on:
+                        in_wait_power = isinstance(self.state, WaitPowerState)
+                        should_retry = in_wait_power and self.offline_seen_in_wait
+                        retries_allowed = max_retries <= 0 or ac_retry_attempts < max_retries
+                        now = time.monotonic()
+
+                        if should_retry and retries_allowed and now - last_retry_at >= retry_interval:
+                            ac_retry_attempts += 1
+                            last_retry_at = now
+                            limit_display = "unlimited" if max_retries <= 0 else str(max_retries)
+                            logging.info(
+                                "Charging: AC output is OFF; retrying AC ON (%s/%s)",
+                                ac_retry_attempts,
+                                limit_display,
+                            )
+                            try:
+                                await self.bluetti_controller.initialize()
+                                self.bluetti_controller.turn_ac("ON")
+                            except Exception:
+                                logging.warning("Charging: AC ON retry failed", exc_info=True)
+
+                        if should_retry and not retries_allowed and not ac_retry_limit_logged:
+                            logging.warning(
+                                "Charging: AC output still OFF after %s retries; will not retry again",
+                                max_retries,
+                            )
+                            ac_retry_limit_logged = True
+
                         zero_duration = 0.0
                         continue
+
+                    if ac_retry_attempts:
+                        logging.info(
+                            "Charging: AC output confirmed ON after %s retries",
+                            ac_retry_attempts,
+                        )
+                    ac_retry_attempts = 0
+                    ac_retry_limit_logged = False
 
                     try:
                         power_val = float(ac_power) if ac_power is not None else 0.0
