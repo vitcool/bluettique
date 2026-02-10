@@ -172,3 +172,126 @@ def test_api_status_includes_boiler_on_intervals(monkeypatch, tmp_path):
         {"start": "2026-02-08 00:10:00", "end": "2026-02-08 00:40:00"},
         {"start": "2026-02-08 01:00:00", "end": "2026-02-08 01:30:00"},
     ]
+
+
+def test_api_status_closes_boiler_interval_on_running_transition(monkeypatch, tmp_path):
+    runtime_status_store.reset()
+    runtime_status_store.set_boiler(
+        {
+            "date": "2026-02-10",
+            "remaining_sec": 1198.0,
+            "last_state": "Paused",
+            "last_update_ts": "2026-02-10T01:50:19",
+            "completed": False,
+            "window_start": "00:00",
+            "window_end": "06:00",
+            "total_run_sec": 7200,
+        }
+    )
+
+    boiler_log = tmp_path / "boiler.log"
+    boiler_log.write_text(
+        "\n".join(
+            [
+                "2026-02-10 00:00:03 | INFO | boiler_scheduler:1 | Boiler: Turned socket ON",
+                "2026-02-10 01:50:19 | INFO | boiler_scheduler:1 | Boiler: State transition Running -> Paused (waiting for power)",
+                "2026-02-10 02:00:23 | INFO | boiler_scheduler:1 | Boiler: Still waiting for power/online socket; retry in 600s (remaining 1198s)",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(server, "BOILER_LOG_PATH", Path(boiler_log))
+
+    with server.app.test_client() as client:
+        response = client.get("/api/status")
+        assert response.status_code == 200
+        payload = response.get_json()
+
+    assert payload["ok"] is True
+    assert payload["boiler"]["on_intervals"] == [
+        {"start": "2026-02-10 00:00:03", "end": "2026-02-10 01:50:19"},
+    ]
+
+
+def test_api_status_caps_boiler_intervals_by_window_end(monkeypatch, tmp_path):
+    runtime_status_store.reset()
+    runtime_status_store.set_boiler(
+        {
+            "date": "2026-02-10",
+            "remaining_sec": 1198.0,
+            "last_state": "Running",
+            "last_update_ts": "2026-02-10T08:47:41",
+            "completed": False,
+            "window_start": "00:00",
+            "window_end": "06:00",
+            "total_run_sec": 7200,
+        }
+    )
+
+    boiler_log = tmp_path / "boiler.log"
+    boiler_log.write_text(
+        "\n".join(
+            [
+                "2026-02-10 05:12:57 | INFO | boiler_scheduler:1 | Boiler: Turned socket ON",
+                "2026-02-10 08:47:41 | INFO | boiler_scheduler:1 | Boiler: Turned socket OFF",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(server, "BOILER_LOG_PATH", Path(boiler_log))
+
+    with server.app.test_client() as client:
+        response = client.get("/api/status")
+        assert response.status_code == 200
+        payload = response.get_json()
+
+    assert payload["ok"] is True
+    assert payload["boiler"]["on_intervals"] == [
+        {"start": "2026-02-10 05:12:57", "end": "2026-02-10 06:00:00"},
+    ]
+
+
+def test_api_status_drops_intervals_without_remaining_progress(monkeypatch, tmp_path):
+    runtime_status_store.reset()
+    runtime_status_store.set_boiler(
+        {
+            "date": "2026-02-10",
+            "remaining_sec": 1198.0,
+            "last_state": "Paused",
+            "last_update_ts": "2026-02-10T02:00:23",
+            "completed": False,
+            "window_start": "00:00",
+            "window_end": "06:00",
+            "total_run_sec": 7200,
+        }
+    )
+
+    boiler_log = tmp_path / "boiler.log"
+    boiler_log.write_text(
+        "\n".join(
+            [
+                "2026-02-10 00:00:03 | INFO | boiler_scheduler:1 | Boiler: Turned socket ON",
+                "2026-02-10 00:10:03 | INFO | boiler_scheduler:1 | Boiler: Running; remaining 6600s, next check in 600s",
+                "2026-02-10 00:20:03 | INFO | boiler_scheduler:1 | Boiler: Running; remaining 6000s, next check in 600s",
+                "2026-02-10 01:50:19 | INFO | boiler_scheduler:1 | Boiler: State transition Running -> Paused (waiting for power)",
+                "2026-02-10 05:12:57 | INFO | boiler_scheduler:1 | Boiler: Turned socket ON",
+                "2026-02-10 05:12:57 | INFO | boiler_scheduler:1 | Boiler: Running; remaining 1198s, next check in 600s",
+                "2026-02-10 08:47:41 | INFO | boiler_scheduler:1 | Boiler: Turned socket OFF",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(server, "BOILER_LOG_PATH", Path(boiler_log))
+
+    with server.app.test_client() as client:
+        response = client.get("/api/status")
+        assert response.status_code == 200
+        payload = response.get_json()
+
+    assert payload["ok"] is True
+    assert payload["boiler"]["on_intervals"] == [
+        {"start": "2026-02-10 00:00:03", "end": "2026-02-10 01:50:19"},
+    ]

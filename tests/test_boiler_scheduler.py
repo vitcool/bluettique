@@ -126,3 +126,17 @@ async def test_counts_remaining_time_only_when_active(tmp_path):
     await scheduler._tick(clock.now())
     assert scheduler.state == "Paused"
     assert abs(scheduler.remaining_sec - prev_remaining) < 1
+
+
+@pytest.mark.asyncio
+async def test_offline_retry_is_capped_by_window_end(tmp_path):
+    now = datetime(2026, 2, 1, 5, 55, 0)
+    clock = FakeClock(now)
+    tapo = FakeTapo(online=False)
+    config = make_config(tmp_path, poll_sec=600, total_run_sec=1200)
+    scheduler = BoilerScheduler(tapo, config=config, clock=clock)
+
+    sleep_for = await scheduler._tick(clock.now())
+
+    assert scheduler.state in {"WaitingForPower", "Paused"}
+    assert 299 <= sleep_for <= 301

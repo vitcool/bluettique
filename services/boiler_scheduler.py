@@ -300,7 +300,7 @@ class BoilerScheduler:
                 )
             self.last_update_monotonic = now_mono  # avoid counting offline time as runtime
             self._persist_state(now)
-            return self.config.poll_sec
+            return min(self.config.poll_sec, (end - now).total_seconds())
 
         # Ensure socket on
         self.logger.info("Boiler: Reconnecting socket before turn ON")
@@ -310,7 +310,7 @@ class BoilerScheduler:
             # Avoid counting time if we couldn't confirm power state.
             self.last_update_monotonic = now_mono
             self._persist_state(now)
-            return self.config.poll_sec
+            return min(self.config.poll_sec, (end - now).total_seconds())
 
         active = await self._is_active()
         elapsed = max(now_mono - self.last_update_monotonic, 0)
@@ -345,7 +345,7 @@ class BoilerScheduler:
         self.logger.info(
             "Boiler: Paused/completed; next check in %ss (remaining %.0fs)", self.config.poll_sec, self.remaining_sec
         )
-        return self.config.poll_sec
+        return min(self.config.poll_sec, (end - now).total_seconds())
 
     async def run(self):
         if not self.config.enabled:

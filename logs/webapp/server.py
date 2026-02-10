@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import re
-from datetime import datetime, timezone
+from datetime import datetime, time as dtime, timezone
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -39,6 +39,10 @@ LOG_LINE_RE_OLD = re.compile(
 )
 BOILER_SOCKET_ON_RE = re.compile(r"\bBoiler:\s+Turned socket ON\b")
 BOILER_SOCKET_OFF_RE = re.compile(r"\bBoiler:\s+Turned socket OFF\b")
+BOILER_STATE_TRANSITION_RE = re.compile(
+    r"\bBoiler:\s+State transition\s+([A-Za-z0-9_]+)\s+->\s+([A-Za-z0-9_]+)\b"
+)
+BOILER_RUNNING_REMAINING_RE = re.compile(r"\bBoiler:\s+Running;\s+remaining\s+([0-9]+(?:\.[0-9]+)?)s\b")
 
 app = Flask(__name__, static_folder=str(BASE_DIR), static_url_path="")
 
@@ -87,6 +91,22 @@ def parse_since(raw_since: str | None) -> datetime | None:
     if raw_since is None:
         return None
     return parse_timestamp(raw_since)
+
+
+def parse_hhmm(raw_value: str | None) -> dtime | None:
+    if not isinstance(raw_value, str):
+        return None
+    parts = raw_value.strip().split(":")
+    if len(parts) != 2:
+        return None
+    try:
+        hours = int(parts[0])
+        minutes = int(parts[1])
+    except ValueError:
+        return None
+    if not (0 <= hours <= 23 and 0 <= minutes <= 59):
+        return None
+    return dtime(hour=hours, minute=minutes)
 
 
 def select_log_sources(raw_source: str | None) -> List[tuple[str, Path]]:
@@ -246,14 +266,25 @@ def extract_last_message_ts() -> str | None:
     return None
 
 
-def extract_boiler_on_intervals(target_date: str | None) -> List[Dict[str, Any]]:
+def extract_boiler_on_intervals(target_date: str | None, window_end: str | None = None) -> List[Dict[str, Any]]:
     resolved = BOILER_LOG_PATH.resolve()
     if not resolved.exists() or not resolved.is_file():
         return []
 
+    window_cutoff: datetime | None = None
+    if target_date and window_end:
+        try:
+            date_dt = datetime.strptime(target_date, "%Y-%m-%d")
+            end_time = parse_hhmm(window_end)
+            if end_time is not None:
+                window_cutoff = datetime.combine(date_dt.date(), end_time)
+        except ValueError:
+            window_cutoff = None
+
     lines = tail_lines(resolved, BOILER_INTERVAL_SCAN_LINE_LIMIT)
     intervals: List[Dict[str, Any]] = []
     open_start: str | None = None
+    running_samples: List[tuple[datetime, float]] = []
 
     for line in lines:
         ts, msg = parse_log_line(line)
@@ -267,17 +298,77 @@ def extract_boiler_on_intervals(target_date: str | None) -> List[Dict[str, Any]]
         if target_date and dt.date().isoformat() != target_date:
             continue
 
+        if window_cutoff is not None and dt > window_cutoff:
+            # We already crossed the daily window end; later log lines must not
+            # extend runtime intervals in the UI.
+            continue
+
+        running_match = BOILER_RUNNING_REMAINING_RE.search(msg)
+        if running_match:
+            try:
+                remaining = float(running_match.group(1))
+            except ValueError:
+                remaining = None
+            if remaining is not None:
+                running_samples.append((dt, remaining))
+
+        transition = BOILER_STATE_TRANSITION_RE.search(msg)
+        if transition:
+            from_state = normalize_state_name(transition.group(1))
+            to_state = normalize_state_name(transition.group(2))
+
+            if to_state == "RUNNING":
+                if open_start is None:
+                    open_start = ts
+                continue
+
+            if open_start is not None and from_state == "RUNNING" and to_state != "RUNNING":
+                end_ts = ts
+                if window_cutoff is not None and dt > window_cutoff:
+                    end_ts = window_cutoff.strftime("%Y-%m-%d %H:%M:%S")
+                intervals.append({"start": open_start, "end": end_ts})
+                open_start = None
+                continue
+
         if BOILER_SOCKET_ON_RE.search(msg):
             if open_start is None:
                 open_start = ts
             continue
 
         if BOILER_SOCKET_OFF_RE.search(msg) and open_start is not None:
-            intervals.append({"start": open_start, "end": ts})
+            end_ts = ts
+            if window_cutoff is not None and dt > window_cutoff:
+                end_ts = window_cutoff.strftime("%Y-%m-%d %H:%M:%S")
+            intervals.append({"start": open_start, "end": end_ts})
             open_start = None
 
     if open_start is not None:
-        intervals.append({"start": open_start, "end": None})
+        end_ts = window_cutoff.strftime("%Y-%m-%d %H:%M:%S") if window_cutoff is not None else None
+        intervals.append({"start": open_start, "end": end_ts})
+
+    # When we have runtime samples, keep only intervals with actual quota progress
+    # (remaining time decreases within the interval). This removes false intervals
+    # caused by stale RUNNING state after process sleep/restart.
+    if running_samples and intervals:
+        filtered: List[Dict[str, Any]] = []
+        for interval in intervals:
+            start_dt = parse_timestamp(interval.get("start"))
+            end_raw = interval.get("end")
+            end_dt = parse_timestamp(end_raw) if isinstance(end_raw, str) else window_cutoff
+            if start_dt is None:
+                continue
+            if end_dt is None:
+                end_dt = window_cutoff
+            if end_dt is None:
+                # No bounded interval end and no cutoff; keep legacy behavior.
+                filtered.append(interval)
+                continue
+
+            values = [remaining for sample_dt, remaining in running_samples if start_dt <= sample_dt <= end_dt]
+            if len(values) >= 2 and min(values) < max(values):
+                filtered.append(interval)
+
+        intervals = filtered
 
     return intervals
 
@@ -310,7 +401,10 @@ def build_status_payload() -> Dict[str, Any]:
         target_date = normalized_boiler.get("date")
         if not isinstance(target_date, str):
             target_date = None
-        normalized_boiler["on_intervals"] = extract_boiler_on_intervals(target_date)
+        window_end = normalized_boiler.get("window_end")
+        if not isinstance(window_end, str):
+            window_end = None
+        normalized_boiler["on_intervals"] = extract_boiler_on_intervals(target_date, window_end)
         status_payload["boiler"] = normalized_boiler
 
     runtime_charging = runtime_status.get("charging_state")
