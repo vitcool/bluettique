@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import re
-from datetime import datetime, time as dtime, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -91,22 +91,6 @@ def parse_since(raw_since: str | None) -> datetime | None:
     if raw_since is None:
         return None
     return parse_timestamp(raw_since)
-
-
-def parse_hhmm(raw_value: str | None) -> dtime | None:
-    if not isinstance(raw_value, str):
-        return None
-    parts = raw_value.strip().split(":")
-    if len(parts) != 2:
-        return None
-    try:
-        hours = int(parts[0])
-        minutes = int(parts[1])
-    except ValueError:
-        return None
-    if not (0 <= hours <= 23 and 0 <= minutes <= 59):
-        return None
-    return dtime(hour=hours, minute=minutes)
 
 
 def select_log_sources(raw_source: str | None) -> List[tuple[str, Path]]:
@@ -266,20 +250,10 @@ def extract_last_message_ts() -> str | None:
     return None
 
 
-def extract_boiler_on_intervals(target_date: str | None, window_end: str | None = None) -> List[Dict[str, Any]]:
+def extract_boiler_on_intervals(target_date: str | None) -> List[Dict[str, Any]]:
     resolved = BOILER_LOG_PATH.resolve()
     if not resolved.exists() or not resolved.is_file():
         return []
-
-    window_cutoff: datetime | None = None
-    if target_date and window_end:
-        try:
-            date_dt = datetime.strptime(target_date, "%Y-%m-%d")
-            end_time = parse_hhmm(window_end)
-            if end_time is not None:
-                window_cutoff = datetime.combine(date_dt.date(), end_time)
-        except ValueError:
-            window_cutoff = None
 
     lines = tail_lines(resolved, BOILER_INTERVAL_SCAN_LINE_LIMIT)
     intervals: List[Dict[str, Any]] = []
@@ -296,11 +270,6 @@ def extract_boiler_on_intervals(target_date: str | None, window_end: str | None 
             continue
 
         if target_date and dt.date().isoformat() != target_date:
-            continue
-
-        if window_cutoff is not None and dt > window_cutoff:
-            # We already crossed the daily window end; later log lines must not
-            # extend runtime intervals in the UI.
             continue
 
         running_match = BOILER_RUNNING_REMAINING_RE.search(msg)
@@ -323,10 +292,7 @@ def extract_boiler_on_intervals(target_date: str | None, window_end: str | None 
                 continue
 
             if open_start is not None and from_state == "RUNNING" and to_state != "RUNNING":
-                end_ts = ts
-                if window_cutoff is not None and dt > window_cutoff:
-                    end_ts = window_cutoff.strftime("%Y-%m-%d %H:%M:%S")
-                intervals.append({"start": open_start, "end": end_ts})
+                intervals.append({"start": open_start, "end": ts})
                 open_start = None
                 continue
 
@@ -336,15 +302,11 @@ def extract_boiler_on_intervals(target_date: str | None, window_end: str | None 
             continue
 
         if BOILER_SOCKET_OFF_RE.search(msg) and open_start is not None:
-            end_ts = ts
-            if window_cutoff is not None and dt > window_cutoff:
-                end_ts = window_cutoff.strftime("%Y-%m-%d %H:%M:%S")
-            intervals.append({"start": open_start, "end": end_ts})
+            intervals.append({"start": open_start, "end": ts})
             open_start = None
 
     if open_start is not None:
-        end_ts = window_cutoff.strftime("%Y-%m-%d %H:%M:%S") if window_cutoff is not None else None
-        intervals.append({"start": open_start, "end": end_ts})
+        intervals.append({"start": open_start, "end": None})
 
     # When we have runtime samples, keep only intervals with actual quota progress
     # (remaining time decreases within the interval). This removes false intervals
@@ -354,11 +316,9 @@ def extract_boiler_on_intervals(target_date: str | None, window_end: str | None 
         for interval in intervals:
             start_dt = parse_timestamp(interval.get("start"))
             end_raw = interval.get("end")
-            end_dt = parse_timestamp(end_raw) if isinstance(end_raw, str) else window_cutoff
+            end_dt = parse_timestamp(end_raw) if isinstance(end_raw, str) else None
             if start_dt is None:
                 continue
-            if end_dt is None:
-                end_dt = window_cutoff
             if end_dt is None:
                 # No bounded interval end and no cutoff; keep legacy behavior.
                 filtered.append(interval)
@@ -401,10 +361,7 @@ def build_status_payload() -> Dict[str, Any]:
         target_date = normalized_boiler.get("date")
         if not isinstance(target_date, str):
             target_date = None
-        window_end = normalized_boiler.get("window_end")
-        if not isinstance(window_end, str):
-            window_end = None
-        normalized_boiler["on_intervals"] = extract_boiler_on_intervals(target_date, window_end)
+        normalized_boiler["on_intervals"] = extract_boiler_on_intervals(target_date)
         status_payload["boiler"] = normalized_boiler
 
     runtime_charging = runtime_status.get("charging_state")

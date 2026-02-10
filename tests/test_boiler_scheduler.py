@@ -91,7 +91,7 @@ async def test_resume_from_persisted_state(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_reset_when_outside_window(tmp_path):
+async def test_continues_after_window_end_until_completed(tmp_path):
     now = datetime(2026, 2, 1, 12, 0, 0)
     clock = FakeClock(now)
     config = make_config(tmp_path)
@@ -99,8 +99,8 @@ async def test_reset_when_outside_window(tmp_path):
 
     await scheduler._tick(clock.now())
 
-    # Outside window -> expired and ensures next reset uses today's date
-    assert scheduler.state == "Expired"
+    # After window end we continue catch-up for the same day.
+    assert scheduler.state == "Running"
     assert scheduler.current_date == now.date().isoformat()
 
 
@@ -129,7 +129,7 @@ async def test_counts_remaining_time_only_when_active(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_offline_retry_is_capped_by_window_end(tmp_path):
+async def test_offline_retry_after_window_end_uses_poll_interval(tmp_path):
     now = datetime(2026, 2, 1, 5, 55, 0)
     clock = FakeClock(now)
     tapo = FakeTapo(online=False)
@@ -139,4 +139,17 @@ async def test_offline_retry_is_capped_by_window_end(tmp_path):
     sleep_for = await scheduler._tick(clock.now())
 
     assert scheduler.state in {"WaitingForPower", "Paused"}
-    assert 299 <= sleep_for <= 301
+    assert sleep_for == 600
+
+
+@pytest.mark.asyncio
+async def test_before_window_start_waits_for_window(tmp_path):
+    now = datetime(2026, 2, 1, 4, 0, 0)
+    clock = FakeClock(now)
+    config = make_config(tmp_path, window_start=dtime(hour=6, minute=0), window_end=dtime(hour=8, minute=0))
+    scheduler = BoilerScheduler(FakeTapo(), config=config, clock=clock)
+
+    sleep_for = await scheduler._tick(clock.now())
+
+    assert scheduler.state == "WaitingForWindow"
+    assert 7199 <= sleep_for <= 7201

@@ -214,7 +214,7 @@ def test_api_status_closes_boiler_interval_on_running_transition(monkeypatch, tm
     ]
 
 
-def test_api_status_caps_boiler_intervals_by_window_end(monkeypatch, tmp_path):
+def test_api_status_keeps_boiler_intervals_after_window_end(monkeypatch, tmp_path):
     runtime_status_store.reset()
     runtime_status_store.set_boiler(
         {
@@ -249,7 +249,7 @@ def test_api_status_caps_boiler_intervals_by_window_end(monkeypatch, tmp_path):
 
     assert payload["ok"] is True
     assert payload["boiler"]["on_intervals"] == [
-        {"start": "2026-02-10 05:12:57", "end": "2026-02-10 06:00:00"},
+        {"start": "2026-02-10 05:12:57", "end": "2026-02-10 08:47:41"},
     ]
 
 
