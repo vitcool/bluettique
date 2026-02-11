@@ -156,6 +156,13 @@ h1 {
     font-size: 0.9rem;
 }
 
+/* Emphasize live power readouts only (keep generic meta like "Telemetry" unchanged). */
+#acOutputDetail,
+#inputDetail {
+    font-size: 1rem;
+    font-weight: 600;
+}
+
 .boiler-card {
     min-width: 240px;
     background: linear-gradient(135deg, rgba(248, 113, 113, 0.08), rgba(15, 23, 42, 0.9));

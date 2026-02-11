@@ -362,17 +362,15 @@ function renderPowerSummary(summary) {
     acStatus.classList.toggle('off', acVal === 'OFF');
 
     const acPower = summary.acOutputPower;
-    const acPowerTs = summary.acOutputPowerTs || summary.acOutputTs;
     if (typeof acPower === 'number' && !isNaN(acPower)) {
-        const tsText = acPowerTs ? formatWithRelative(acPowerTs) : '';
-        acOutputDetail.textContent = `${Math.round(acPower)} W${tsText ? ' — ' + tsText : ''}`;
+        acOutputDetail.textContent = `${Math.round(acPower)} W`;
     } else {
         acOutputDetail.textContent = 'Waiting for power…';
     }
 
     const pct = summary.batteryPercent;
     batteryPercentEl.textContent = typeof pct === 'number' && !isNaN(pct) ? Math.round(pct) : '—';
-    batteryTime.textContent = formatWithRelative(summary.batteryTs);
+    batteryTime.textContent = 'Telemetry';
 
     const pack2 = summary.pack2Battery;
     const pack2Voltage = summary.pack2Voltage;
@@ -398,9 +396,7 @@ function renderPowerSummary(summary) {
     const parts = [];
     if (typeof dc === 'number' && !isNaN(dc)) parts.push(`DC ${Math.round(dc)} W`);
     if (typeof ac === 'number' && !isNaN(ac)) parts.push(`AC ${Math.round(ac)} W`);
-    const latestInputTs = pickLatestTimestamp([summary.dcInputTs, summary.acInputTs]);
-    const inputTsText = latestInputTs ? formatWithRelative(latestInputTs) : 'Waiting for data…';
-    inputDetail.textContent = parts.length ? `${parts.join(' • ')} — ${inputTsText}` : inputTsText;
+    inputDetail.textContent = parts.length ? parts.join(' • ') : 'Waiting for data…';
 
     const lastMsg = summary.lastMessageTs;
     const forcedOfflineTs = summary.forcedOfflineTs;
@@ -450,7 +446,12 @@ function renderBoilerCard(boiler) {
 
     const mainText = completed ? 'COMPLETE' : (isRunning ? 'RUNNING' : 'INCOMPLETE');
     const meta1 = dateLabel;
-    const meta2 = intervalText ? `was running during: ${intervalText}` : 'was running during: —';
+    const meta2 = intervalText
+        ? intervalText
+            .split(' • ')
+            .map(part => `• ${part}`)
+            .join(' ')
+        : '• —';
 
     boilerCardValue.textContent = mainText;
     boilerCardValue.className = `value ${completed ? 'on' : (isRunning ? 'warn' : 'off')}`;
