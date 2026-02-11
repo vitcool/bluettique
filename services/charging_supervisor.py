@@ -34,6 +34,7 @@ class ChargingConfig:
     recheck_quick_interval_sec: int
     ac_retry_interval_sec: int
     ac_retry_max_attempts: int
+    ac_zero_power_off_sec: int
 
     @classmethod
     def from_env(cls) -> "ChargingConfig":
@@ -52,6 +53,7 @@ class ChargingConfig:
             recheck_quick_interval_sec=_int_env("RECHECK_QUICK_INTERVAL_SEC", 20),
             ac_retry_interval_sec=_int_env("AC_RETRY_INTERVAL_SEC", 30),
             ac_retry_max_attempts=_int_env("AC_RETRY_MAX_ATTEMPTS", 10),
+            ac_zero_power_off_sec=_int_env("AC_ZERO_POWER_OFF_SEC", 300),
         )
 
 

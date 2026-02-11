@@ -284,6 +284,8 @@ class ChargingStateHandler:
                 zero_duration = 0.0
                 ac_retry_attempts = 0
                 ac_retry_limit_logged = False
+                ac_retry_suppressed_after_zero_off = False
+                ac_retry_suppressed_logged = False
                 retry_interval = max(float(self.config.ac_retry_interval_sec), 0.1)
                 max_retries = int(self.config.ac_retry_max_attempts)
                 last_retry_at = 0.0
@@ -296,7 +298,11 @@ class ChargingStateHandler:
 
                     if not ac_on:
                         in_wait_power = isinstance(self.state, WaitPowerState)
-                        should_retry = in_wait_power and self.offline_seen_in_wait
+                        should_retry = (
+                            in_wait_power
+                            and self.offline_seen_in_wait
+                            and not ac_retry_suppressed_after_zero_off
+                        )
                         retries_allowed = max_retries <= 0 or ac_retry_attempts < max_retries
                         now = time.monotonic()
 
@@ -322,6 +328,12 @@ class ChargingStateHandler:
                             )
                             ac_retry_limit_logged = True
 
+                        if ac_retry_suppressed_after_zero_off and not ac_retry_suppressed_logged:
+                            logging.info(
+                                "Charging: AC retries suppressed after zero-power auto-off; waiting for next cycle",
+                            )
+                            ac_retry_suppressed_logged = True
+
                         zero_duration = 0.0
                         continue
 
@@ -340,14 +352,20 @@ class ChargingStateHandler:
 
                     if power_val <= 0.0:
                         zero_duration += poll_interval
-                        if zero_duration >= 300:
+                        if zero_duration >= self.config.ac_zero_power_off_sec:
                             logging.info(
                                 "Charging: Offline recovery turning AC off after %.0fs at ~0W draw",
                                 zero_duration,
                             )
                             self.bluetti_controller.turn_ac("OFF")
+                            ac_retry_suppressed_after_zero_off = True
+                            ac_retry_suppressed_logged = False
+                            ac_retry_attempts = 0
+                            ac_retry_limit_logged = False
                             zero_duration = 0.0
                     else:
+                        ac_retry_suppressed_after_zero_off = False
+                        ac_retry_suppressed_logged = False
                         zero_duration = 0.0
             except asyncio.CancelledError:
                 raise
