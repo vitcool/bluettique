@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from logs.webapp import server
@@ -129,6 +130,40 @@ def test_api_logs_rejects_unknown_source(monkeypatch, tmp_path):
 
     assert payload["ok"] is False
     assert payload["error"]["code"] == "invalid_log_source"
+
+
+def test_api_logs_can_read_previous_day_file(monkeypatch, tmp_path):
+    today = tmp_path / "log.txt"
+    prev_date = (datetime.now().date() - timedelta(days=1)).isoformat()
+    prev = tmp_path / f"log.txt.{prev_date}"
+    today.write_text("today1\n", encoding="utf-8")
+    prev.write_text("prev1\nprev2\n", encoding="utf-8")
+    monkeypatch.setattr(server, "LOG_SOURCES", [("charging", Path(today))])
+
+    with server.app.test_client() as client:
+        response = client.get("/api/logs?source=charging&day=prev&limit=10")
+        assert response.status_code == 200
+        payload = response.get_json()
+
+    assert payload["ok"] is True
+    assert payload["day"] == "prev"
+    assert payload["source_count"] == 1
+    assert payload["sources"][0]["file"] == f"log.txt.{prev_date}"
+    assert payload["sources"][0]["lines"] == ["prev1", "prev2"]
+
+
+def test_api_logs_rejects_invalid_day(monkeypatch, tmp_path):
+    charging = tmp_path / "log.txt"
+    charging.write_text("c1\n", encoding="utf-8")
+    monkeypatch.setattr(server, "LOG_SOURCES", [("charging", Path(charging))])
+
+    with server.app.test_client() as client:
+        response = client.get("/api/logs?source=charging&day=yesterday")
+        assert response.status_code == 400
+        payload = response.get_json()
+
+    assert payload["ok"] is False
+    assert payload["error"]["code"] == "invalid_day"
 
 
 def test_api_status_includes_boiler_on_intervals(monkeypatch, tmp_path):

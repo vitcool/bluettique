@@ -56,18 +56,24 @@
     <section id="logView" class="panel hidden">
         <div id="logToolbar" class="log-toolbar">
             <div id="logTitle" class="log-title">Logs</div>
-            <button
-                id="refreshLogsBtn"
-                class="btn-refresh icon-only"
-                type="button"
-                aria-label="Refresh"
-                title="Refresh"
-            >
-                <svg class="refresh-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                    <path d="M20 12a8 8 0 1 1-2.34-5.66" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                    <path d="M20 4v6h-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-            </button>
+            <div class="log-toolbar-actions">
+                <select id="logDaySelect" class="log-day-select" aria-label="Log day">
+                    <option value="today">Today</option>
+                    <option value="prev">Previous day</option>
+                </select>
+                <button
+                    id="refreshLogsBtn"
+                    class="btn-refresh icon-only"
+                    type="button"
+                    aria-label="Refresh"
+                    title="Refresh"
+                >
+                    <svg class="refresh-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                        <path d="M20 12a8 8 0 1 1-2.34-5.66" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                        <path d="M20 4v6h-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </button>
+            </div>
         </div>
         <div id="logSections" class="log-sections">
             <pre id="logContent">Open a log tab to load logs.</pre>

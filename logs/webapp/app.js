@@ -3,6 +3,7 @@ const logView = document.getElementById('logView');
 const logSections = document.getElementById('logSections');
 const refreshLogsBtn = document.getElementById('refreshLogsBtn');
 const logTitle = document.getElementById('logTitle');
+const logDaySelect = document.getElementById('logDaySelect');
 const viewButtons = document.querySelectorAll('.view-toggle button');
 const statusViewBtn = document.querySelector('.view-toggle button[data-view="status"]');
 const topbar = document.querySelector('.topbar');
@@ -43,13 +44,14 @@ let statusRefreshTimer = null;
 let statusRefreshMs = DEFAULT_STATUS_REFRESH_MS;
 let logRefreshMs = DEFAULT_LOG_REFRESH_MS;
 let logAutoRefetchPaused = false;
+let currentLogDay = 'today';
 const LOG_VIEW_TO_SOURCE = {
     'boiler-log': 'boiler',
     'charging-log': 'charging'
 };
 const logSourceState = {
-    boiler: { lines: [], file: 'boiler.log', latestTs: null, initialized: false },
-    charging: { lines: [], file: 'log.txt', latestTs: null, initialized: false }
+    boiler: { lines: [], file: 'boiler.log', latestTs: null, initialized: false, day: 'today' },
+    charging: { lines: [], file: 'log.txt', latestTs: null, initialized: false, day: 'today' }
 };
 
 function isDesktopLayout() {
@@ -131,10 +133,26 @@ function getCurrentLogPre() {
     return pre || null;
 }
 
-function isLogPinnedToTop() {
+function hasVerticalOverflow(element) {
+    if (!(element instanceof HTMLElement)) return false;
+    return (element.scrollHeight - element.clientHeight) > 1;
+}
+
+function getLogScrollTop() {
     const pre = getCurrentLogPre();
-    if (!pre) return true;
-    return pre.scrollTop <= LOG_TOP_THRESHOLD_PX;
+    if (pre && hasVerticalOverflow(pre)) {
+        return pre.scrollTop;
+    }
+
+    if (hasVerticalOverflow(logSections)) {
+        return logSections.scrollTop;
+    }
+
+    return window.scrollY || document.documentElement.scrollTop || 0;
+}
+
+function isLogPinnedToTop() {
+    return getLogScrollTop() <= LOG_TOP_THRESHOLD_PX;
 }
 
 function updateLogAutoRefetchState() {
@@ -175,6 +193,7 @@ function updateLogStateFromSource(source, payload, mode = 'replace') {
         state.latestTs = payload.latest_ts;
     }
     state.file = file;
+    state.day = currentLogDay;
     state.initialized = true;
     return state;
 }
@@ -196,7 +215,8 @@ function renderLogState(source) {
 function buildLogsUrl(source, opts = {}) {
     const params = new URLSearchParams({
         limit: String(DEFAULT_LOG_LIMIT),
-        source
+        source,
+        day: currentLogDay
     });
     if (opts.since) {
         params.set('since', opts.since);
@@ -518,7 +538,7 @@ async function fetchLogsForView(view, force = false) {
     const controller = new AbortController();
     logFetchController = controller;
     logFetchInFlight = true;
-    const incremental = !force && Boolean(state?.initialized && state?.latestTs);
+    const incremental = !force && currentLogDay === 'today' && Boolean(state?.initialized && state?.latestTs && state?.day === 'today');
     if (!incremental) {
         renderLogTextMessage('Loading logs...');
     }
@@ -597,6 +617,7 @@ function ensureLogAutoRefresh() {
     }
     logRefreshTimer = setInterval(() => {
         if (!isLogView(currentView)) return;
+        if (currentLogDay !== 'today') return;
         fetchLogsForView(currentView, false);
     }, logRefreshMs);
 }
@@ -658,15 +679,26 @@ viewButtons.forEach(btn => {
     btn.addEventListener('click', () => setView(btn.dataset.view));
 });
 
-logSections.addEventListener('scroll', (event) => {
-    if (!(event.target instanceof HTMLElement)) return;
-    if (event.target.tagName !== 'PRE') return;
+logSections.addEventListener('scroll', () => {
     updateLogAutoRefetchState();
 }, true);
+
+window.addEventListener('scroll', () => {
+    if (!isLogView(currentView)) return;
+    updateLogAutoRefetchState();
+}, { passive: true });
 
 refreshLogsBtn.addEventListener('click', () => {
     fetchLogsForView(currentView, true);
 });
+
+if (logDaySelect) {
+    logDaySelect.addEventListener('change', () => {
+        currentLogDay = logDaySelect.value === 'prev' ? 'prev' : 'today';
+        logAutoRefetchPaused = false;
+        fetchLogsForView(currentView, true);
+    });
+}
 
 setView(isDesktopLayout() ? 'charging-log' : 'status');
 fetchStatus();

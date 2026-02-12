@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -93,10 +93,26 @@ def parse_since(raw_since: str | None) -> datetime | None:
     return parse_timestamp(raw_since)
 
 
+def parse_day(raw_day: str | None) -> str:
+    if raw_day is None:
+        return "today"
+    day = raw_day.strip().lower()
+    if day in {"today", "prev"}:
+        return day
+    raise ValueError("invalid_day")
+
+
 def select_log_sources(raw_source: str | None) -> List[tuple[str, Path]]:
     if not raw_source:
         return LOG_SOURCES
     return [source for source in LOG_SOURCES if source[0] == raw_source]
+
+
+def resolve_log_path_for_day(source_path: Path, day: str) -> Path:
+    if day == "today":
+        return source_path
+    prev_date = (datetime.now().date() - timedelta(days=1)).isoformat()
+    return source_path.with_name(f"{source_path.name}.{prev_date}")
 
 
 def tail_lines(path: Path, limit: int) -> List[str]:
@@ -403,7 +419,24 @@ def api_logs():
     limit = parse_limit(request.args.get("limit"))
     source = request.args.get("source")
     since_raw = request.args.get("since")
+    day_raw = request.args.get("day")
     since_dt = parse_since(since_raw)
+    try:
+        day = parse_day(day_raw)
+    except ValueError:
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": {
+                        "code": "invalid_day",
+                        "message": "Invalid 'day' value. Use 'today' or 'prev'.",
+                    },
+                }
+            ),
+            400,
+        )
+
     if since_raw is not None and since_dt is None:
         return (
             jsonify(
@@ -439,9 +472,10 @@ def api_logs():
     sources_payload: List[Dict[str, Any]] = []
 
     for label, source_path in selected_sources:
-        resolved = source_path.resolve()
+        actual_path = resolve_log_path_for_day(source_path, day)
+        resolved = actual_path.resolve()
         if not resolved.exists() or not resolved.is_file():
-            missing.append(str(source_path))
+            missing.append(str(actual_path))
             continue
 
         all_lines = tail_lines(resolved, limit)
@@ -450,7 +484,7 @@ def api_logs():
         sources_payload.append(
             {
                 "label": label,
-                "file": source_path.name,
+                "file": actual_path.name,
                 "line_count": len(lines),
                 "latest_ts": latest_ts,
                 "lines": lines,
@@ -478,6 +512,7 @@ def api_logs():
             "ok": True,
             "limit": limit,
             "source_count": len(sources_payload),
+            "day": day,
             "since": since_raw,
             "missing_files": missing,
             "sources": sources_payload,
