@@ -27,6 +27,7 @@ const DEFAULT_STATUS_REFRESH_MS = 2000;
 const DEFAULT_LOG_REFRESH_MS = 2000;
 const DEFAULT_LOG_LIMIT = 800;
 const MAX_UI_LOG_LINES = 5000;
+const LOG_TOP_THRESHOLD_PX = 24;
 const urlParams = new URLSearchParams(window.location.search);
 let connectionWindowMin = (() => {
     const val = Number(urlParams.get('conn_window_min'));
@@ -41,6 +42,7 @@ let logRefreshTimer = null;
 let statusRefreshTimer = null;
 let statusRefreshMs = DEFAULT_STATUS_REFRESH_MS;
 let logRefreshMs = DEFAULT_LOG_REFRESH_MS;
+let logAutoRefetchPaused = false;
 const LOG_VIEW_TO_SOURCE = {
     'boiler-log': 'boiler',
     'charging-log': 'charging'
@@ -124,36 +126,23 @@ function renderSingleLogSource(source) {
     renderLogSources([source]);
 }
 
-function getCurrentLogViewport() {
+function getCurrentLogPre() {
     const pre = logSections.querySelector('.log-source pre, pre#logContent');
-    if (!pre) return null;
-
-    const maxScrollTop = Math.max(0, pre.scrollHeight - pre.clientHeight);
-    const offsetFromBottom = Math.max(0, maxScrollTop - pre.scrollTop);
-    return {
-        nearTop: pre.scrollTop <= 24,
-        offsetFromBottom,
-        nearBottom: offsetFromBottom <= 24
-    };
+    return pre || null;
 }
 
-function restoreLogViewport(viewport) {
-    if (!viewport) return;
-    const pre = logSections.querySelector('.log-source pre, pre#logContent');
-    if (!pre) return;
+function isLogPinnedToTop() {
+    const pre = getCurrentLogPre();
+    if (!pre) return true;
+    return pre.scrollTop <= LOG_TOP_THRESHOLD_PX;
+}
 
-    if (viewport.nearTop) {
-        pre.scrollTop = 0;
-        return;
+function updateLogAutoRefetchState() {
+    const paused = isLogView(currentView) && !isLogPinnedToTop();
+    logAutoRefetchPaused = paused;
+    if (paused) {
+        cancelLogsFetch();
     }
-
-    if (viewport.nearBottom) {
-        pre.scrollTop = pre.scrollHeight;
-        return;
-    }
-
-    const maxScrollTop = Math.max(0, pre.scrollHeight - pre.clientHeight);
-    pre.scrollTop = Math.max(0, maxScrollTop - viewport.offsetFromBottom);
 }
 
 function getLogState(source) {
@@ -196,13 +185,12 @@ function renderLogState(source) {
         renderLogTextMessage('No logs available.');
         return;
     }
-    const viewport = getCurrentLogViewport();
     renderSingleLogSource({
         label: source,
         file: state.file || `${source}.log`,
         lines: state.lines
     });
-    restoreLogViewport(viewport);
+    updateLogAutoRefetchState();
 }
 
 function buildLogsUrl(source, opts = {}) {
@@ -516,6 +504,11 @@ async function fetchLogsForView(view, force = false) {
     const source = LOG_VIEW_TO_SOURCE[view];
     if (!source) return;
     const state = getLogState(source);
+    const activeLogView = isLogView(currentView) && currentView === view;
+
+    if (!force && activeLogView && logAutoRefetchPaused) {
+        return;
+    }
 
     if (logFetchInFlight) {
         if (!force) return;
@@ -648,10 +641,12 @@ function setView(view) {
     viewButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.view === normalizedView));
 
     if (isLogView(normalizedView) && normalizedView !== previousView) {
+        logAutoRefetchPaused = false;
         fetchLogsForView(normalizedView, false);
     }
     if (isLogView(previousView) && previousView !== normalizedView) {
         cancelLogsFetch();
+        logAutoRefetchPaused = false;
     }
 }
 
@@ -662,6 +657,12 @@ window.addEventListener('resize', () => {
 viewButtons.forEach(btn => {
     btn.addEventListener('click', () => setView(btn.dataset.view));
 });
+
+logSections.addEventListener('scroll', (event) => {
+    if (!(event.target instanceof HTMLElement)) return;
+    if (event.target.tagName !== 'PRE') return;
+    updateLogAutoRefetchState();
+}, true);
 
 refreshLogsBtn.addEventListener('click', () => {
     fetchLogsForView(currentView, true);
