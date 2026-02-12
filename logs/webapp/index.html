@@ -14,68 +14,64 @@
             <div class="status-card">
                 <div class="label">AC Output</div>
                 <div class="value" id="acStatus">—</div>
-            <div class="meta" id="acOutputDetail">Waiting for power…</div>
-        </div>
-        <div class="status-card">
-            <div class="label">Battery <span id="batteryExtra" class="battery-extra">+ 🔋</span></div>
-            <div class="value"><span id="batteryPercent">—</span><span class="unit">%</span></div>
-            <div class="meta" id="batteryTime">Waiting for data…</div>
-        </div>
-        <div class="status-card">
-            <div class="label">Input</div>
-            <div class="value" id="inputStatus">—</div>
-            <div class="meta" id="inputDetail">Waiting for data…</div>
-        </div>
-        <div class="status-card">
-            <div class="label">Connection</div>
-            <div class="value" id="connStatus">—</div>
-            <div class="meta" id="connDetail">Waiting for data…</div>
-        </div>
-        <div class="status-card boiler-card" id="boilerCard">
-            <div class="label">Boiler</div>
-            <div class="value" id="boilerCardValue">Loading…</div>
-            <div class="meta" id="boilerCardMeta">Waiting for data…</div>
-            <div class="meta" id="boilerCardMeta2"></div>
-        </div>
+                <div class="meta" id="acOutputDetail">Waiting for power…</div>
+            </div>
+            <div class="status-card">
+                <div class="label">Battery <span id="batteryExtra" class="battery-extra">+ 🔋</span></div>
+                <div class="value"><span id="batteryPercent">—</span><span class="unit">%</span></div>
+                <div class="meta" id="batteryTime">Waiting for data…</div>
+            </div>
+            <div class="status-card">
+                <div class="label">Input</div>
+                <div class="value" id="inputStatus">—</div>
+                <div class="meta" id="inputDetail">Waiting for data…</div>
+            </div>
+            <div class="status-card">
+                <div class="label">Connection</div>
+                <div class="value" id="connStatus">—</div>
+                <div class="meta" id="connDetail">Waiting for data…</div>
+            </div>
+            <div class="status-card">
+                <div class="label">Charging State</div>
+                <div class="value" id="chargingStateValue">—</div>
+                <div class="meta" id="chargingStateMeta">Waiting for data…</div>
+            </div>
+            <div class="status-card boiler-card" id="boilerCard">
+                <div class="label">Boiler</div>
+                <div class="value" id="boilerCardValue">Loading…</div>
+                <div class="meta" id="boilerCardMeta">Waiting for data…</div>
+                <div class="meta" id="boilerCardMeta2"></div>
+            </div>
         </div>
     </section>
 
     <div class="topbar">
         <div class="view-toggle" aria-label="Toggle between views">
-            <button type="button" data-view="status" class="mobile-only">Status</button>
-            <button type="button" data-view="states">States</button>
-            <button type="button" data-view="transitions">Transitions</button>
-            <button type="button" data-view="log">Charging log</button>
-            <button type="button" data-view="boiler">Boiler log</button>
+            <button type="button" data-view="status">Status</button>
+            <button type="button" data-view="charging-log">Charging Logs</button>
+            <button type="button" data-view="boiler-log">Boiler Logs</button>
         </div>
     </div>
 
-    <section id="statesView" class="panel hidden">
-        <div id="stateTimeline" class="timeline" aria-live="polite">
-            <div class="state-row">
-                <div class="state-title">Listening for state changes…</div>
-                <div class="meta"></div>
-                <div class="detail">Updates every 2 seconds</div>
-            </div>
-        </div>
-    </section>
-
-    <section id="transitionsView" class="panel hidden">
-        <div id="transitionsTimeline" class="timeline" aria-live="polite">
-            <div class="state-row">
-                <div class="state-title">Waiting for first transition…</div>
-                <div class="meta"></div>
-                <div class="detail">Only logs when the state value changes</div>
-            </div>
-        </div>
-    </section>
-
     <section id="logView" class="panel hidden">
-        <pre id="logContent">Loading logs...</pre>
-    </section>
-
-    <section id="boilerView" class="panel hidden">
-        <pre id="boilerLogContent">Loading boiler logs...</pre>
+        <div id="logToolbar" class="log-toolbar">
+            <div id="logTitle" class="log-title">Logs</div>
+            <button
+                id="refreshLogsBtn"
+                class="btn-refresh icon-only"
+                type="button"
+                aria-label="Refresh"
+                title="Refresh"
+            >
+                <svg class="refresh-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M20 12a8 8 0 1 1-2.34-5.66" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    <path d="M20 4v6h-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            </button>
+        </div>
+        <div id="logSections" class="log-sections">
+            <pre id="logContent">Open a log tab to load logs.</pre>
+        </div>
     </section>
 
     <script src="app.js"></script>

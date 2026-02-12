@@ -19,6 +19,10 @@ body {
     color: var(--text);
     margin: 0;
     padding: 24px;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
 }
 
 h1 {
@@ -57,6 +61,51 @@ h1 {
 .view-toggle button.active {
     color: var(--text);
     background: var(--accent-muted);
+}
+
+.btn-refresh {
+    appearance: none;
+    border: 1px solid rgba(56, 189, 248, 0.45);
+    background: linear-gradient(135deg, rgba(56, 189, 248, 0.22), rgba(15, 23, 42, 0.95));
+    color: var(--text);
+    border-radius: 10px;
+    padding: 9px 14px;
+    font-weight: 700;
+    letter-spacing: 0.2px;
+    cursor: pointer;
+    transition: transform 0.12s ease, border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+}
+
+.btn-refresh:hover {
+    border-color: rgba(56, 189, 248, 0.75);
+    background: linear-gradient(135deg, rgba(56, 189, 248, 0.3), rgba(15, 23, 42, 0.95));
+    transform: translateY(-1px);
+}
+
+.btn-refresh:active {
+    transform: translateY(0);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+}
+
+.btn-refresh:focus-visible {
+    outline: 2px solid rgba(56, 189, 248, 0.85);
+    outline-offset: 2px;
+}
+
+.btn-refresh.icon-only {
+    width: 42px;
+    height: 42px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.refresh-icon {
+    width: 20px;
+    height: 20px;
+    display: block;
 }
 
 .mobile-only { display: none; }
@@ -107,6 +156,13 @@ h1 {
     font-size: 0.9rem;
 }
 
+/* Emphasize live power readouts only (keep generic meta like "Telemetry" unchanged). */
+#acOutputDetail,
+#inputDetail {
+    font-size: 1rem;
+    font-weight: 600;
+}
+
 .boiler-card {
     min-width: 240px;
     background: linear-gradient(135deg, rgba(248, 113, 113, 0.08), rgba(15, 23, 42, 0.9));
@@ -118,6 +174,11 @@ h1 {
     border-color: rgba(52, 211, 153, 0.5);
 }
 
+.boiler-card.running {
+    background: linear-gradient(135deg, rgba(251, 191, 36, 0.11), rgba(15, 23, 42, 0.9));
+    border-color: rgba(251, 191, 36, 0.55);
+}
+
 .boiler-card .value {
     color: var(--danger);
 }
@@ -126,12 +187,40 @@ h1 {
     color: var(--success);
 }
 
+.boiler-card .value.warn {
+    color: var(--warning);
+}
+
 .panel {
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: 16px;
     padding: 16px;
     box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+}
+
+#logView {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.log-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 8px;
+}
+
+.log-title {
+    padding: 10px 12px;
+    font-size: 0.85rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
 }
 
 .latest {
@@ -201,6 +290,50 @@ pre {
     white-space: pre-wrap;
 }
 
+.log-sections {
+    display: grid;
+    gap: 12px;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.log-source {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    background: rgba(11, 22, 40, 0.8);
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.log-source-header {
+    padding: 10px 12px;
+    font-size: 0.85rem;
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    display: none;
+}
+
+.log-source pre {
+    margin: 0;
+    border: none;
+    border-radius: 0;
+    max-height: none;
+    flex: 1;
+    min-height: 0;
+}
+
+.log-sections > pre {
+    margin: 0;
+    max-height: none;
+    min-height: 0;
+    flex: 1;
+}
+
 .hidden { display: none; }
 
 @media (max-width: 720px) {
@@ -212,5 +345,27 @@ pre {
 }
 
 @media (max-width: 1024px) {
+    body {
+        height: auto;
+        min-height: 100dvh;
+        overflow-x: hidden;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .topbar {
+        position: sticky;
+        top: 0;
+        z-index: 30;
+        padding-top: 6px;
+        padding-bottom: 6px;
+        background: linear-gradient(180deg, rgba(11, 18, 33, 0.96) 0%, rgba(11, 18, 33, 0.84) 70%, rgba(11, 18, 33, 0) 100%);
+        backdrop-filter: blur(6px);
+    }
+
+    body.mobile-status-view #logView {
+        display: none !important;
+    }
+
     .mobile-only { display: inline-block; }
 }

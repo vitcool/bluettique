@@ -4,6 +4,7 @@ import time
 from typing import Optional
 
 from services.charging_supervisor import ChargingSupervisor, ChargingConfig
+from services.runtime_status import runtime_status_store
 
 
 class ChargingState:
@@ -242,14 +243,25 @@ class ChargingStateHandler:
         self.offline_seen_in_wait = False
         self.first_launch = True
         self.offline_recovery_task: Optional[asyncio.Task] = None
+        runtime_status_store.set_charging_state(self._state_name(self.state))
+
+    @staticmethod
+    def _state_name(state: ChargingState) -> str:
+        name = state.__class__.__name__
+        if name.endswith("State"):
+            name = name[:-5]
+        return name.upper()
 
     def set_state(self, state: ChargingState, reason: str | None = None):
+        previous_state_name = self._state_name(self.state)
+        next_state_name = self._state_name(state)
         logging.info(
             "Charging: State transition %s -> %s%s",
             self.state.__class__.__name__,
             state.__class__.__name__,
             f" ({reason})" if reason else "",
         )
+        runtime_status_store.set_charging_transition(previous_state_name, next_state_name, reason)
         self.state = state
         if isinstance(state, WaitPowerState):
             # Require a fresh offline->online observation each time we re-enter WAIT_POWER
@@ -270,6 +282,13 @@ class ChargingStateHandler:
             try:
                 poll_interval = self.config.stable_power_interval_sec
                 zero_duration = 0.0
+                ac_retry_attempts = 0
+                ac_retry_limit_logged = False
+                ac_retry_suppressed_after_zero_off = False
+                ac_retry_suppressed_logged = False
+                retry_interval = max(float(self.config.ac_retry_interval_sec), 0.1)
+                max_retries = int(self.config.ac_retry_max_attempts)
+                last_retry_at = 0.0
 
                 while True:
                     await asyncio.sleep(poll_interval)
@@ -278,8 +297,53 @@ class ChargingStateHandler:
                     ac_power = status.get("ac_output_power")
 
                     if not ac_on:
+                        in_wait_power = isinstance(self.state, WaitPowerState)
+                        should_retry = (
+                            in_wait_power
+                            and self.offline_seen_in_wait
+                            and not ac_retry_suppressed_after_zero_off
+                        )
+                        retries_allowed = max_retries <= 0 or ac_retry_attempts < max_retries
+                        now = time.monotonic()
+
+                        if should_retry and retries_allowed and now - last_retry_at >= retry_interval:
+                            ac_retry_attempts += 1
+                            last_retry_at = now
+                            limit_display = "unlimited" if max_retries <= 0 else str(max_retries)
+                            logging.info(
+                                "Charging: AC output is OFF; retrying AC ON (%s/%s)",
+                                ac_retry_attempts,
+                                limit_display,
+                            )
+                            try:
+                                await self.bluetti_controller.initialize()
+                                self.bluetti_controller.turn_ac("ON")
+                            except Exception:
+                                logging.warning("Charging: AC ON retry failed", exc_info=True)
+
+                        if should_retry and not retries_allowed and not ac_retry_limit_logged:
+                            logging.warning(
+                                "Charging: AC output still OFF after %s retries; will not retry again",
+                                max_retries,
+                            )
+                            ac_retry_limit_logged = True
+
+                        if ac_retry_suppressed_after_zero_off and not ac_retry_suppressed_logged:
+                            logging.info(
+                                "Charging: AC retries suppressed after zero-power auto-off; waiting for next cycle",
+                            )
+                            ac_retry_suppressed_logged = True
+
                         zero_duration = 0.0
                         continue
+
+                    if ac_retry_attempts:
+                        logging.info(
+                            "Charging: AC output confirmed ON after %s retries",
+                            ac_retry_attempts,
+                        )
+                    ac_retry_attempts = 0
+                    ac_retry_limit_logged = False
 
                     try:
                         power_val = float(ac_power) if ac_power is not None else 0.0
@@ -288,14 +352,20 @@ class ChargingStateHandler:
 
                     if power_val <= 0.0:
                         zero_duration += poll_interval
-                        if zero_duration >= 300:
+                        if zero_duration >= self.config.ac_zero_power_off_sec:
                             logging.info(
                                 "Charging: Offline recovery turning AC off after %.0fs at ~0W draw",
                                 zero_duration,
                             )
                             self.bluetti_controller.turn_ac("OFF")
+                            ac_retry_suppressed_after_zero_off = True
+                            ac_retry_suppressed_logged = False
+                            ac_retry_attempts = 0
+                            ac_retry_limit_logged = False
                             zero_duration = 0.0
                     else:
+                        ac_retry_suppressed_after_zero_off = False
+                        ac_retry_suppressed_logged = False
                         zero_duration = 0.0
             except asyncio.CancelledError:
                 raise
