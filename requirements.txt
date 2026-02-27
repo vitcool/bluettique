@@ -5,6 +5,7 @@ bleak==0.22.3
 certifi==2024.8.30
 charset-normalizer==3.3.2
 click==8.1.7
+Flask==3.0.3
 dbus-fast==2.24.4
 enum-compat==0.0.3
 idna==3.10
@@ -16,6 +17,7 @@ pathspec==0.12.1
 platformdirs==4.3.6
 psutil==6.1.0
 pytest==8.3.3
+pytest-asyncio==0.24.0
 python-dotenv==1.0.1
 PyYAML==6.0.2
 shellescape==3.8.1

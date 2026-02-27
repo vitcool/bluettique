@@ -4,6 +4,10 @@ class BluettiStatus:
     def __init__(self):
         """Initialize all status attributes."""
         self.total_battery_percent = None
+        self.pack_details2_percent = None
+        self.pack_details2_voltage = None
+        self.pack_details3_percent = None
+        self.pack_details3_voltage = None
         self.ac_output_on = None
         self.dc_output_on = None
         self.ac_output_power = None
@@ -24,6 +28,10 @@ class BluettiStatus:
         """Return the current status of the Bluetti device as a dictionary."""
         return {
             "total_battery_percent": self.total_battery_percent,
+            "pack_details2_percent": self.pack_details2_percent,
+            "pack_details2_voltage": self.pack_details2_voltage,
+            "pack_details3_percent": self.pack_details3_percent,
+            "pack_details3_voltage": self.pack_details3_voltage,
             "ac_output_on": self.ac_output_on,
             "dc_output_on": self.dc_output_on,
             "ac_output_power": self.ac_output_power,
@@ -36,6 +44,10 @@ class BluettiStatus:
     def reset_status(self):
         """Reset all status attributes to None (or default values)."""
         self.total_battery_percent = None
+        self.pack_details2_percent = None
+        self.pack_details2_voltage = None
+        self.pack_details3_percent = None
+        self.pack_details3_voltage = None
         self.ac_output_on = None
         self.dc_output_on = None
         self.ac_output_power = None

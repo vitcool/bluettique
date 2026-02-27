@@ -2,6 +2,7 @@ import asyncio
 import signal
 import logging
 import os
+import threading
 from dotenv import load_dotenv
 from controllers.bluetti import BluettiController
 from controllers.tapo import TapoController
@@ -9,6 +10,16 @@ from utils.logger import setup_logging
 from charging_state_handler import ChargingStateHandler
 from services.boiler_scheduler import BoilerScheduler, BoilerConfig
 from services.tapo import TapoService
+from services.runtime_status import runtime_status_store
+from logs.webapp.server import run_web_server
+
+
+def _env_int(name: str, default: int, min_value: int = 1, max_value: int = 60000) -> int:
+    try:
+        raw = int(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        raw = default
+    return max(min_value, min(max_value, raw))
 
 async def test_bluetti_dc_cycle(bluetti_controller: BluettiController):
     """Initialize Bluetti, then toggle DC on/off five times with 5s intervals."""
@@ -32,9 +43,9 @@ async def test_bluetti_dc_cycle(bluetti_controller: BluettiController):
 
 async def main(tapo_controller, bluetti_controller):
     setup_logging()
+    _start_web_server()
 
     logging.info("Starting Bluetti DC cycle test...")
-    print("Starting Bluetti DC cycle test...")
 
     boiler_task = None
 
@@ -74,6 +85,29 @@ async def main(tapo_controller, bluetti_controller):
     charging_handler = ChargingStateHandler(tapo_controller, bluetti_controller)
     while True:
         await charging_handler.handle_state()
+
+
+def _start_web_server():
+    web_enabled = os.getenv("WEBAPP_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
+    if not web_enabled:
+        logging.info("Webapp server disabled by WEBAPP_ENABLED.")
+        return
+
+    window_min = int(os.getenv("CONNECTION_WINDOW_MIN", "5"))
+    runtime_status_store.set_connection_meta("window_min", window_min)
+    runtime_status_store.set_connection_meta(
+        "status_refresh_ms",
+        _env_int("WEBAPP_STATUS_REFRESH_MS", 2000, min_value=250, max_value=60000),
+    )
+    runtime_status_store.set_connection_meta(
+        "logs_refresh_ms",
+        _env_int("WEBAPP_LOGS_REFRESH_MS", 2000, min_value=250, max_value=60000),
+    )
+
+    web_port = int(os.getenv("WEBAPP_PORT", "8080"))
+    thread = threading.Thread(target=run_web_server, kwargs={"host": "0.0.0.0", "port": web_port}, daemon=True)
+    thread.start()
+    logging.info("Webapp server started on port %s", web_port)
 
 
 load_dotenv()

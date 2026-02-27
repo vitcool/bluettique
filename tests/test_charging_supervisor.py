@@ -6,6 +6,7 @@ def make_config(**overrides) -> ChargingConfig:
         charging_w_threshold=20,
         low_power_consecutive_count=3,
         check_interval_sec=900,
+        first_power_check_delay_sec=30,
         startup_grace_sec=90,
         min_on_time_sec=1200,
         stable_power_checks=2,
@@ -14,6 +15,8 @@ def make_config(**overrides) -> ChargingConfig:
         recheck_off_sec=90,
         recheck_quick_checks=3,
         recheck_quick_interval_sec=20,
+        ac_retry_interval_sec=30,
+        ac_retry_max_attempts=10,
     )
     defaults.update(overrides)
     return ChargingConfig(**defaults)

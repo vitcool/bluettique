@@ -102,6 +102,13 @@ BOILER_POLL_SEC=300
 BOILER_ACTIVE_W_THRESHOLD=0
 BOILER_STATE_FILE=logs/boiler_logs/boiler_state.json
 BOILER_LOG_FILE=logs/boiler_logs/boiler.log
+
+# Webapp
+WEBAPP_ENABLED=true
+WEBAPP_PORT=8080
+WEBAPP_STATUS_REFRESH_MS=2000
+WEBAPP_LOGS_REFRESH_MS=2000
+CONNECTION_WINDOW_MIN=5
 ```
 
 Make sure to replace the placeholders with your actual credentials and settings.

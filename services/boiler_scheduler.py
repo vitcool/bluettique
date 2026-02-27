@@ -8,6 +8,8 @@ from datetime import datetime, timedelta, time as dtime
 from typing import Optional, Tuple
 
 from services.tapo import TapoService
+from services.runtime_status import runtime_status_store
+from utils.logger import create_default_formatter
 
 
 # Lightweight clock wrapper to ease testing.
@@ -90,13 +92,23 @@ class BoilerScheduler:
 
         self._load_persisted_state()
 
+    def _log_tick_snapshot(self, now: datetime, start: datetime, end: datetime, in_window: bool) -> None:
+        self.logger.info(
+            "Boiler: Tick now=%s state=%s remaining=%.0fs in_window=%s window=%s..%s",
+            now.isoformat(timespec="seconds"),
+            self.state,
+            self.remaining_sec,
+            in_window,
+            start.isoformat(timespec="seconds"),
+            end.isoformat(timespec="seconds"),
+        )
+
     def _setup_logger(self):
         _ensure_dir(self.config.log_file)
         logger = logging.getLogger("boiler_scheduler")
         if not logger.handlers:
             handler = logging.FileHandler(self.config.log_file)
-            formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-            handler.setFormatter(formatter)
+            handler.setFormatter(create_default_formatter())
             logger.addHandler(handler)
             logger.setLevel(logging.INFO)
             logger.propagate = False
@@ -145,7 +157,7 @@ class BoilerScheduler:
 
         now = self.clock.now()
         today = now.date().isoformat()
-        start, end = self._window_bounds(now)
+        start, _ = self._window_bounds(now)
         if data and data.get("date") == today:
             self.current_date = today
             self.remaining_sec = float(data.get("remaining_sec", self.config.total_run_sec))
@@ -159,12 +171,8 @@ class BoilerScheduler:
                 self.remaining_sec,
                 self.completed_today,
             )
-
-            # If we're already past today's window, keep the completion flag but avoid resetting to a new day.
-            if now >= end:
-                if not self.completed_today:
-                    self.state = BoilerState.EXPIRED
-                    self.logger.info("Boiler: Window passed without completion; marking expired")
+            if now < start and not self.completed_today:
+                self.state = BoilerState.WAITING_WINDOW
                 self._persist_state(now)
         else:
             self._reset_for_today(now)
@@ -182,6 +190,10 @@ class BoilerScheduler:
             "window_end": self.config.window_end.strftime("%H:%M"),
             "total_run_sec": self.config.total_run_sec,
         }
+        try:
+            runtime_status_store.set_boiler(state)
+        except Exception:
+            self.logger.debug("Boiler: Failed to publish runtime status", exc_info=True)
         _ensure_dir(self.config.state_file)
         try:
             with open(self.config.state_file, "w", encoding="utf-8") as f:
@@ -238,28 +250,36 @@ class BoilerScheduler:
     async def _tick(self, now: datetime):
         start, end = self._window_bounds(now)
         in_window = start <= now < end
+        self._log_tick_snapshot(now, start, end, in_window)
 
         # Date rollover handling
         if self.current_date != now.date().isoformat():
             self._reset_for_today(now)
 
-        if not in_window:
-            # Outside window: mark expired and ensure off.
-            if self.state not in (BoilerState.EXPIRED, BoilerState.WAITING_WINDOW):
-                self.logger.info("Boiler: Window ended, stopping socket.")
+        if now < start:
+            # Before today's window start we stay idle.
+            if self.state != BoilerState.WAITING_WINDOW:
+                self.logger.info("Boiler: Before window start, stopping socket.")
             await self._ensure_off()
-            self.state = BoilerState.EXPIRED
+            self.state = BoilerState.WAITING_WINDOW
+            self.last_update_monotonic = self.clock.monotonic()
             self._persist_state(now)
-            return self._seconds_until_window(now)
+            sleep_for = self._seconds_until_window(now)
+            self.logger.info(
+                "Boiler: Waiting for window start; next window starts in %.0fs at %s",
+                sleep_for,
+                (now + timedelta(seconds=sleep_for)).isoformat(timespec="seconds"),
+            )
+            return sleep_for
 
-        # Inside window
+        # After window start (including post-window catch-up)
         if self.remaining_sec <= 0:
             if self.state != BoilerState.COMPLETED:
                 self.logger.info("Boiler: Completed required runtime; turning off.")
                 await self._ensure_off()
                 self.state = BoilerState.COMPLETED
                 self._persist_state(now)
-            return min(self.config.poll_sec, (end - now).total_seconds())
+            return self.config.poll_sec
 
         online = await self._is_online()
         now_mono = self.clock.monotonic()
@@ -310,7 +330,7 @@ class BoilerScheduler:
         self._persist_state(now)
 
         if self.state == BoilerState.RUNNING and active:
-            next_sleep = min(self.config.poll_sec, (end - now).total_seconds())
+            next_sleep = self.config.poll_sec
             self.logger.info(
                 "Boiler: Running; remaining %.0fs, next check in %ss", self.remaining_sec, next_sleep
             )
@@ -329,6 +349,16 @@ class BoilerScheduler:
             self.logger.info("Boiler: Scheduler disabled; skipping run loop.")
             return
         self.logger.info("Boiler: Scheduler starting.")
+        self.logger.info(
+            "Boiler: Active config window=%s-%s total_run_sec=%s poll_sec=%s active_w_threshold=%s ip=%s state_file=%s",
+            self.config.window_start.strftime("%H:%M"),
+            self.config.window_end.strftime("%H:%M"),
+            self.config.total_run_sec,
+            self.config.poll_sec,
+            self.config.active_w_threshold,
+            self.config.ip_address or "n/a",
+            self.config.state_file,
+        )
         while True:
             now = self.clock.now()
             try:
@@ -336,4 +366,11 @@ class BoilerScheduler:
             except Exception:
                 self.logger.warning("Boiler: Unexpected error in tick", exc_info=True)
                 sleep_for = self.config.poll_sec
-            await asyncio.sleep(max(sleep_for, 1))
+            sleep_for = max(sleep_for, 1)
+            wake_at = self.clock.now() + timedelta(seconds=sleep_for)
+            self.logger.info(
+                "Boiler: Sleeping for %.0fs (wake at %s)",
+                sleep_for,
+                wake_at.isoformat(timespec="seconds"),
+            )
+            await asyncio.sleep(sleep_for)
