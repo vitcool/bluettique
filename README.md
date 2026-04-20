@@ -150,3 +150,7 @@ Make sure to replace the placeholders with your actual credentials and settings.
 All dependencies are listed in the `requirements.txt` file. To install them, use:
 
 `pip install -r requirements.txt`
+
+## Worktree Test Note
+
+This short section was added from a separate Git worktree to verify that isolated changes can be committed independently during local development.
