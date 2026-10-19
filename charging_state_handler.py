@@ -3,6 +3,7 @@ import logging
 import time
 from typing import Optional
 
+from services.ac_recovery import AcRecoveryTask
 from services.battery_guard import BatteryGuard
 from services.charging_supervisor import ChargingSupervisor, ChargingConfig
 from services.failure_streak import FailureStreak
@@ -208,7 +209,11 @@ class ChargingStateHandler:
         self.battery_guard = BatteryGuard(self.config, bluetti_controller, tapo_controller)
         self.monitor_streak = FailureStreak(self.config.monitor_read_failures, self.config.monitor_read_fail_sec)
         self.first_launch = True
-        self.offline_recovery_task: Optional[asyncio.Task] = None
+        self.ac_recovery = AcRecoveryTask(
+            self.config,
+            bluetti_controller,
+            lambda: isinstance(self.state, WaitPowerState) and self.offline_seen_in_wait,
+        )
         runtime_status_store.set_charging_state(self._state_name(self.state))
 
     @staticmethod
@@ -235,9 +240,11 @@ class ChargingStateHandler:
             self.offline_seen_in_wait = False
             self.reset_offline_tracking()
         else:
-            if self.offline_recovery_task and not self.offline_recovery_task.done():
-                self.offline_recovery_task.cancel()
-                self.offline_recovery_task = None
+            self.ac_recovery.cancel()
+
+    @property
+    def offline_recovery_task(self) -> Optional[asyncio.Task]:
+        return self.ac_recovery.task
 
     @property
     def offline_failures(self) -> int:
@@ -279,9 +286,7 @@ class ChargingStateHandler:
         """The plug answered again while charging: undo the keep-alive."""
         if not self.ac_keep_alive_sent:
             return
-        if self.offline_recovery_task and not self.offline_recovery_task.done():
-            self.offline_recovery_task.cancel()
-            self.offline_recovery_task = None
+        self.ac_recovery.cancel()
         self.ac_keep_alive_sent = False
         try:
             self.bluetti_controller.turn_ac("OFF")
@@ -295,101 +300,4 @@ class ChargingStateHandler:
         await self.state.handle(self)
 
     def schedule_offline_recovery_check(self):
-        if self.offline_recovery_task and not self.offline_recovery_task.done():
-            self.offline_recovery_task.cancel()
-
-        async def _delayed_check():
-            try:
-                poll_interval = self.config.stable_power_interval_sec
-                zero_duration = 0.0
-                ac_retry_attempts = 0
-                ac_retry_limit_logged = False
-                ac_retry_suppressed_after_zero_off = False
-                ac_retry_suppressed_logged = False
-                retry_interval = max(float(self.config.ac_retry_interval_sec), 0.1)
-                max_retries = int(self.config.ac_retry_max_attempts)
-                last_retry_at = 0.0
-
-                while True:
-                    await asyncio.sleep(poll_interval)
-                    status = self.bluetti_controller.get_status()
-                    ac_on = status.get("ac_output_on")
-                    ac_power = status.get("ac_output_power")
-
-                    if not ac_on:
-                        in_wait_power = isinstance(self.state, WaitPowerState)
-                        should_retry = (
-                            in_wait_power
-                            and self.offline_seen_in_wait
-                            and not ac_retry_suppressed_after_zero_off
-                        )
-                        retries_allowed = max_retries <= 0 or ac_retry_attempts < max_retries
-                        now = time.monotonic()
-
-                        if should_retry and retries_allowed and now - last_retry_at >= retry_interval:
-                            ac_retry_attempts += 1
-                            last_retry_at = now
-                            limit_display = "unlimited" if max_retries <= 0 else str(max_retries)
-                            logging.info(
-                                "Charging: AC output is OFF; retrying AC ON (%s/%s)",
-                                ac_retry_attempts,
-                                limit_display,
-                            )
-                            try:
-                                await self.bluetti_controller.initialize()
-                                self.bluetti_controller.turn_ac("ON")
-                            except Exception:
-                                logging.warning("Charging: AC ON retry failed", exc_info=True)
-
-                        if should_retry and not retries_allowed and not ac_retry_limit_logged:
-                            logging.warning(
-                                "Charging: AC output still OFF after %s retries; will not retry again",
-                                max_retries,
-                            )
-                            ac_retry_limit_logged = True
-
-                        if ac_retry_suppressed_after_zero_off and not ac_retry_suppressed_logged:
-                            logging.info(
-                                "Charging: AC retries suppressed after zero-power auto-off; waiting for next cycle",
-                            )
-                            ac_retry_suppressed_logged = True
-
-                        zero_duration = 0.0
-                        continue
-
-                    if ac_retry_attempts:
-                        logging.info(
-                            "Charging: AC output confirmed ON after %s retries",
-                            ac_retry_attempts,
-                        )
-                    ac_retry_attempts = 0
-                    ac_retry_limit_logged = False
-
-                    try:
-                        power_val = float(ac_power) if ac_power is not None else 0.0
-                    except (TypeError, ValueError):
-                        power_val = 0.0
-
-                    if power_val <= 0.0:
-                        zero_duration += poll_interval
-                        if zero_duration >= self.config.ac_zero_power_off_sec:
-                            logging.info(
-                                "Charging: Offline recovery turning AC off after %.0fs at ~0W draw",
-                                zero_duration,
-                            )
-                            self.bluetti_controller.turn_ac("OFF")
-                            ac_retry_suppressed_after_zero_off = True
-                            ac_retry_suppressed_logged = False
-                            ac_retry_attempts = 0
-                            ac_retry_limit_logged = False
-                            zero_duration = 0.0
-                    else:
-                        ac_retry_suppressed_after_zero_off = False
-                        ac_retry_suppressed_logged = False
-                        zero_duration = 0.0
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                logging.warning("Charging: Offline recovery check failed", exc_info=True)
-
-        self.offline_recovery_task = asyncio.create_task(_delayed_check())
+        self.ac_recovery.start()
