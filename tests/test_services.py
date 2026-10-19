@@ -99,3 +99,16 @@ def test_runtime_status_records_transition_and_bluetti_summary():
     assert snapshot["power_summary"]["batteryPercent"] == 80
     assert snapshot["power_summary"]["acOutputOn"] is True
     assert snapshot["connection"]["last_message_ts"]
+
+
+def test_failure_streak_confirms_on_count_or_duration():
+    from services.failure_streak import FailureStreak
+
+    by_count = FailureStreak(max_failures=2, max_sec=1000)
+    assert by_count.register() is False
+    assert by_count.register() is True
+    by_count.reset()
+    assert by_count.count == 0 and by_count.register() is False
+
+    by_time = FailureStreak(max_failures=100, max_sec=0)
+    assert by_time.register() is True

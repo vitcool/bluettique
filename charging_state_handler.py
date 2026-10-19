@@ -4,7 +4,12 @@ import time
 from typing import Optional
 
 from services.charging_supervisor import ChargingSupervisor, ChargingConfig
+from services.failure_streak import FailureStreak
 from services.runtime_status import runtime_status_store
+
+
+def _power_w(power) -> float:
+    return float(power) if power is not None else -1
 
 
 class ChargingState:
@@ -139,7 +144,7 @@ class MonitorChargingState(ChargingState):
         if not is_charging:
             logging.info(
                 "Charging: Stable check power=%.2fW (remaining=%s, threshold=%s)",
-                float(power) if power is not None else -1,
+                _power_w(power),
                 handler.stable_checks_remaining,
                 handler.config.charging_w_threshold,
             )
@@ -157,7 +162,7 @@ class MonitorChargingState(ChargingState):
 
         logging.info(
             "Charging: Power check power=%.2fW threshold=%s elapsed_on=%.1fs",
-            float(power) if power is not None else -1,
+            _power_w(power),
             handler.config.charging_w_threshold,
             elapsed_on,
         )
@@ -197,11 +202,9 @@ class ChargingStateHandler:
         self.first_power_check_at: Optional[float] = None
         self.stable_checks_remaining = self.config.stable_power_checks
         self.offline_seen_in_wait = False
-        self.offline_failures = 0
-        self.offline_since: Optional[float] = None
+        self.offline_streak = FailureStreak(self.config.offline_confirm_failures, self.config.offline_confirm_sec)
         self.ac_keep_alive_sent = False
-        self.monitor_read_failures = 0
-        self.monitor_fail_since: Optional[float] = None
+        self.monitor_streak = FailureStreak(self.config.monitor_read_failures, self.config.monitor_read_fail_sec)
         self.first_launch = True
         self.offline_recovery_task: Optional[asyncio.Task] = None
         runtime_status_store.set_charging_state(self._state_name(self.state))
@@ -234,36 +237,28 @@ class ChargingStateHandler:
                 self.offline_recovery_task.cancel()
                 self.offline_recovery_task = None
 
+    @property
+    def offline_failures(self) -> int:
+        return self.offline_streak.count
+
+    @property
+    def monitor_read_failures(self) -> int:
+        return self.monitor_streak.count
+
     def reset_offline_tracking(self):
-        self.offline_failures = 0
-        self.offline_since = None
+        self.offline_streak.reset()
         self.ac_keep_alive_sent = False
 
     def register_offline_failure(self) -> bool:
         """Record a failed poll; True once the outage is long enough to count as a disconnect."""
-        now = time.monotonic()
-        if self.offline_since is None:
-            self.offline_since = now
-        self.offline_failures += 1
-        return (
-            self.offline_failures >= self.config.offline_confirm_failures
-            or now - self.offline_since >= self.config.offline_confirm_sec
-        )
+        return self.offline_streak.register()
 
     def register_monitor_read_failure(self) -> bool:
         """Record a failed power read in MONITOR; True once failures are long enough to count as an outage."""
-        now = time.monotonic()
-        if self.monitor_fail_since is None:
-            self.monitor_fail_since = now
-        self.monitor_read_failures += 1
-        return (
-            self.monitor_read_failures >= self.config.monitor_read_failures
-            or now - self.monitor_fail_since >= self.config.monitor_read_fail_sec
-        )
+        return self.monitor_streak.register()
 
     def reset_monitor_read_failures(self):
-        self.monitor_read_failures = 0
-        self.monitor_fail_since = None
+        self.monitor_streak.reset()
 
     async def trigger_ac_keep_alive(self):
         """Turn the Bluetti AC on once per outage so a real power cut is covered quickly."""
