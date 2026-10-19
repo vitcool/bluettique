@@ -340,3 +340,22 @@ async def test_monitor_falls_back_to_wait_after_limit_with_outage_confirmed():
 
     assert isinstance(handler.state, WaitPowerState)
     assert handler.offline_seen_in_wait is True
+
+
+@pytest.mark.asyncio
+async def test_battery_level_reported_during_slow_initialize_is_used():
+    from charging_state_handler import StartChargingState
+
+    handler = _make_wait_handler(
+        [False, True], battery_percent=None, offline_confirm_failures=1, battery_unknown_wait_sec=1
+    )
+    bluetti = handler.bluetti_controller
+
+    async def slow_initialize():
+        await asyncio.sleep(1.2)  # longer than the wait window
+        bluetti.battery_percent = 40
+
+    bluetti.initialize = slow_initialize
+    await _run_wait_polls(handler, 2)
+
+    assert isinstance(handler.state, StartChargingState)

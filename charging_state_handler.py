@@ -386,15 +386,18 @@ class ChargingStateHandler:
     async def _wait_for_battery_percent(self) -> Optional[float]:
         """Give the Bluetti a short window to report a fresh level (e.g. right after a restart)."""
         percent = self._read_battery_percent()
+        if percent is not None or self.config.battery_unknown_wait_sec <= 0:
+            return percent
+        try:
+            await self.bluetti_controller.initialize()
+        except Exception:
+            logging.warning("Charging: Bluetti initialize failed while waiting for battery level", exc_info=True)
+        # initialize() can itself take a long time, so the window starts after it returns
         deadline = time.monotonic() + self.config.battery_unknown_wait_sec
-        if percent is None and self.config.battery_unknown_wait_sec > 0:
-            try:
-                await self.bluetti_controller.initialize()
-            except Exception:
-                logging.warning("Charging: Bluetti initialize failed while waiting for battery level", exc_info=True)
-            while percent is None and time.monotonic() < deadline:
-                await asyncio.sleep(1)
-                percent = self._read_battery_percent()
+        percent = self._read_battery_percent()
+        while percent is None and time.monotonic() < deadline:
+            await asyncio.sleep(1)
+            percent = self._read_battery_percent()
         return percent
 
     async def skip_start_if_battery_blocks(self) -> bool:
