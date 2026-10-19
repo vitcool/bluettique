@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 
 from charging_state_handler import ChargingStateHandler, WaitPowerState
@@ -5,7 +7,7 @@ from tests.fakes import FakeBluetti, FakeTapo, make_config
 
 
 @pytest.fixture
-def make_handler():
+async def make_handler():
     """Build a handler in WAIT_POWER with fakes; recovery tasks are cancelled on teardown."""
     handlers = []
 
@@ -23,6 +25,7 @@ def make_handler():
         return handler
 
     yield factory
-    for handler in handlers:
-        if handler.offline_recovery_task and not handler.offline_recovery_task.done():
-            handler.offline_recovery_task.cancel()
+    tasks = [h.offline_recovery_task for h in handlers if h.offline_recovery_task and not h.offline_recovery_task.done()]
+    for task in tasks:
+        task.cancel()
+    await asyncio.gather(*tasks, return_exceptions=True)
