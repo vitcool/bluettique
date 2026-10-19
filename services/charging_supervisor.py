@@ -38,6 +38,9 @@ class ChargingConfig:
     offline_confirm_failures: int = 1
     offline_confirm_sec: int = 120
     charge_skip_above_percent: int = 98
+    charge_skip_when_unknown: bool = True
+    battery_max_age_sec: int = 600
+    battery_unknown_wait_sec: int = 20
     monitor_read_failures: int = 3
     monitor_read_fail_sec: int = 120
 
@@ -62,6 +65,9 @@ class ChargingConfig:
             offline_confirm_failures=_int_env("OFFLINE_CONFIRM_FAILURES", 1),
             offline_confirm_sec=_int_env("OFFLINE_CONFIRM_SEC", 120),
             charge_skip_above_percent=_int_env("CHARGE_SKIP_ABOVE_PERCENT", 98),
+            charge_skip_when_unknown=_bool_env("CHARGE_SKIP_WHEN_UNKNOWN", True),
+            battery_max_age_sec=_int_env("BATTERY_MAX_AGE_SEC", 600),
+            battery_unknown_wait_sec=_int_env("BATTERY_UNKNOWN_WAIT_SEC", 20),
             monitor_read_failures=_int_env("MONITOR_READ_FAILURES", 3),
             monitor_read_fail_sec=_int_env("MONITOR_READ_FAIL_SEC", 120),
         )

@@ -1,9 +1,11 @@
 import logging
+import time
 
 class BluettiStatus:
     def __init__(self):
         """Initialize all status attributes."""
         self.total_battery_percent = None
+        self.battery_updated_at = None
         self.pack_details2_percent = None
         self.pack_details2_voltage = None
         self.pack_details3_percent = None
@@ -23,11 +25,14 @@ class BluettiStatus:
             self.info_received = True
 
         setattr(self, attr, value)
+        if attr == "total_battery_percent":
+            self.battery_updated_at = time.monotonic()
 
     def get_status(self):
         """Return the current status of the Bluetti device as a dictionary."""
         return {
             "total_battery_percent": self.total_battery_percent,
+            "battery_updated_at": self.battery_updated_at,
             "pack_details2_percent": self.pack_details2_percent,
             "pack_details2_voltage": self.pack_details2_voltage,
             "pack_details3_percent": self.pack_details3_percent,
@@ -44,6 +49,7 @@ class BluettiStatus:
     def reset_status(self):
         """Reset all status attributes to None (or default values)."""
         self.total_battery_percent = None
+        self.battery_updated_at = None
         self.pack_details2_percent = None
         self.pack_details2_voltage = None
         self.pack_details3_percent = None

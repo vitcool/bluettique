@@ -27,7 +27,7 @@ class WaitPowerState(ChargingState):
         if first_launch:
             handler.first_launch = False
             if is_online:
-                if await handler.skip_start_if_battery_full():
+                if await handler.skip_start_if_battery_blocks():
                     await asyncio.sleep(handler.config.check_interval_sec)
                     return
                 handler.low_power_counter = 0
@@ -55,7 +55,7 @@ class WaitPowerState(ChargingState):
             return
 
         if handler.offline_seen_in_wait:
-            if await handler.skip_start_if_battery_full():
+            if await handler.skip_start_if_battery_blocks():
                 handler.offline_seen_in_wait = False
                 handler.reset_offline_tracking()
                 await asyncio.sleep(handler.config.check_interval_sec)
@@ -364,31 +364,52 @@ class ChargingStateHandler:
         except Exception:
             logging.warning("Charging: Failed to turn Bluetti AC off after recovery", exc_info=True)
 
-    def battery_is_full(self) -> bool:
-        limit = self.config.charge_skip_above_percent
+    def _read_battery_percent(self) -> Optional[float]:
+        """Latest known battery percent, or None when missing, unreadable or older than the allowed age."""
         try:
-            percent = self.bluetti_controller.get_status().get("total_battery_percent")
+            status = self.bluetti_controller.get_status()
         except Exception:
-            logging.warning("Charging: Could not read Bluetti battery level; not blocking start", exc_info=True)
-            return False
+            logging.warning("Charging: Could not read Bluetti status", exc_info=True)
+            return None
+        percent = status.get("total_battery_percent")
         if percent is None:
-            logging.info("Charging: Bluetti battery level unknown; not blocking start")
-            return False
+            return None
+        updated_at = status.get("battery_updated_at")
+        max_age = self.config.battery_max_age_sec
+        if updated_at is not None and max_age > 0 and time.monotonic() - updated_at > max_age:
+            return None
         try:
-            return float(percent) >= limit
+            return float(percent)
         except (TypeError, ValueError):
-            return False
+            return None
 
-    async def skip_start_if_battery_full(self) -> bool:
-        """True (and socket forced off) when the Bluetti is full enough that charging should not start."""
-        if not self.battery_is_full():
+    async def _wait_for_battery_percent(self) -> Optional[float]:
+        """Give the Bluetti a short window to report a fresh level (e.g. right after a restart)."""
+        percent = self._read_battery_percent()
+        deadline = time.monotonic() + self.config.battery_unknown_wait_sec
+        if percent is None and self.config.battery_unknown_wait_sec > 0:
+            try:
+                await self.bluetti_controller.initialize()
+            except Exception:
+                logging.warning("Charging: Bluetti initialize failed while waiting for battery level", exc_info=True)
+            while percent is None and time.monotonic() < deadline:
+                await asyncio.sleep(1)
+                percent = self._read_battery_percent()
+        return percent
+
+    async def skip_start_if_battery_blocks(self) -> bool:
+        """True (and socket forced off) when charging must not start: battery full, or level unknown."""
+        percent = await self._wait_for_battery_percent()
+        limit = self.config.charge_skip_above_percent
+        if percent is None:
+            if not self.config.charge_skip_when_unknown:
+                logging.info("Charging: Bluetti battery level unknown; not blocking start")
+                return False
+            logging.info("Charging: Bluetti battery level unknown or stale; not starting charging")
+        elif percent >= limit:
+            logging.info("Charging: Bluetti battery %s%% >= %s%%; not starting charging", percent, limit)
+        else:
             return False
-        percent = self.bluetti_controller.get_status().get("total_battery_percent")
-        logging.info(
-            "Charging: Bluetti battery %s%% >= %s%%; not starting charging",
-            percent,
-            self.config.charge_skip_above_percent,
-        )
         try:
             await self.tapo_controller.stop_charging()
         except Exception:
