@@ -13,9 +13,12 @@ class TapoService:
         self.ip_address = ip_address or os.getenv("CHARGING_SOCKET_DEVICE_ID") or os.getenv("TAPO_IP_ADDRESS")
         self.device = None
 
+    def reset_session(self):
+        self.device = None
+
     async def initialize(self):
         # Always clear session and re-login to avoid stale/expired sessions.
-        self.device = None
+        self.reset_session()
         logging.info("TAPO: Reconnecting to device %s", self.ip_address)
         try:
             await asyncio.wait_for(self._login(), timeout=20)
@@ -38,7 +41,7 @@ class TapoService:
             await self.device.on()
         except Exception:
             # Session may be stale; reset and retry once
-            self.device = None
+            self.reset_session()
             logging.debug("TAPO: turn_on failed; resetting session and retrying")
             await self.initialize()
             await self.device.on()
@@ -48,7 +51,7 @@ class TapoService:
         try:
             await self.device.off()
         except Exception:
-            self.device = None
+            self.reset_session()
             logging.debug("TAPO: turn_off failed; resetting session and retrying")
             await self.initialize()
             await self.device.off()
@@ -58,7 +61,7 @@ class TapoService:
             return await self.device.get_device_info()
         except Exception:
             # Force re-login on next attempt after auth/network failures
-            self.device = None
+            self.reset_session()
             logging.debug("TAPO: Failed to get state; session will be reset")
             raise
 
