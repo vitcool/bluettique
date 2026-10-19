@@ -45,8 +45,6 @@ async def main(tapo_controller, bluetti_controller):
     setup_logging()
     _start_web_server()
 
-    logging.info("Starting Bluetti DC cycle test...")
-
     boiler_task = None
 
     def handle_stop_signal(signum, frame):
@@ -65,6 +63,7 @@ async def main(tapo_controller, bluetti_controller):
     # Default off so the state machine starts immediately; enable if you need the DC pulse.
     run_dc_test = os.getenv("RUN_DC_TEST", "false").lower() in ["1", "true", "yes", "on"]
     if run_dc_test:
+        logging.info("Starting Bluetti DC cycle test...")
         await test_bluetti_dc_cycle(bluetti_controller)
 
     # Optional boiler scheduler (runs concurrently with charging logic)

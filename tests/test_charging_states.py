@@ -5,7 +5,6 @@ import pytest
 
 from charging_state_handler import (
     MonitorChargingState,
-    RecheckState,
     StartChargingState,
     StopChargingState,
     WaitPowerState,
@@ -65,7 +64,6 @@ async def test_monitor_charging_reading_resets_stable_checks(make_monitor_handle
 
     assert isinstance(handler.state, MonitorChargingState)
     assert handler.stable_checks_remaining == 2
-    assert handler.low_power_counter == 0
 
 
 @pytest.mark.asyncio
@@ -78,13 +76,12 @@ async def test_monitor_charging_inside_startup_grace_keeps_monitoring(make_monit
 
 
 @pytest.mark.asyncio
-async def test_monitor_charging_after_grace_never_triggers_recheck(make_monitor_handler):
+async def test_monitor_keeps_monitoring_while_charging_after_grace(make_monitor_handler):
     handler = make_monitor_handler([500.0] * 5)
     for _ in range(5):
         await handler.state.handle(handler)
 
     assert isinstance(handler.state, MonitorChargingState)
-    assert handler.low_power_counter == 0
 
 
 @pytest.mark.asyncio
@@ -127,71 +124,6 @@ async def test_stop_turns_socket_off_and_resets(make_handler):
     assert handler.tapo_controller.stop_calls == 1
     assert handler.socket_on_at is None
     assert handler.first_power_check_at is None
-
-
-@pytest.fixture
-def make_recheck_handler(make_handler):
-    def factory(power_script, **config):
-        settings = dict(recheck_off_sec=0, recheck_quick_interval_sec=0, recheck_quick_checks=3)
-        settings.update(config)
-        handler = make_handler(**settings)
-        handler.tapo_controller.power_script = list(power_script)
-        handler.state = RecheckState()
-        return handler
-
-    return factory
-
-
-@pytest.mark.asyncio
-async def test_recheck_disabled_stops(make_recheck_handler):
-    handler = make_recheck_handler([], recheck_cycle_enabled=False)
-    await handler.state.handle(handler)
-
-    assert isinstance(handler.state, StopChargingState)
-    assert handler.tapo_controller.stop_calls == 0
-
-
-@pytest.mark.asyncio
-async def test_recheck_cycles_socket_and_resumes_when_charging_detected(make_recheck_handler):
-    handler = make_recheck_handler([1.0, 500.0])
-    await handler.state.handle(handler)
-
-    assert isinstance(handler.state, MonitorChargingState)
-    assert handler.tapo_controller.stop_calls == 1
-    assert handler.tapo_controller.start_calls == 1
-    assert handler.low_power_counter == 0
-    assert handler.stable_checks_remaining == handler.config.stable_power_checks
-    assert handler.socket_on_at is not None
-
-
-@pytest.mark.asyncio
-async def test_recheck_stops_when_all_quick_readings_low(make_recheck_handler):
-    handler = make_recheck_handler([1.0, 2.0, 3.0])
-    await handler.state.handle(handler)
-
-    assert isinstance(handler.state, StopChargingState)
-    assert handler.tapo_controller.power_script == []
-
-
-@pytest.mark.asyncio
-async def test_recheck_power_read_failure_returns_to_wait(make_recheck_handler):
-    handler = make_recheck_handler([RuntimeError("boom")])
-    await handler.state.handle(handler)
-
-    assert isinstance(handler.state, WaitPowerState)
-
-
-@pytest.mark.asyncio
-async def test_recheck_restart_failure_returns_to_wait(make_recheck_handler):
-    handler = make_recheck_handler([])
-
-    async def boom():
-        raise RuntimeError("boom")
-
-    handler.tapo_controller.start_charging = boom
-    await handler.state.handle(handler)
-
-    assert isinstance(handler.state, WaitPowerState)
 
 
 @pytest.mark.asyncio

@@ -7,19 +7,3 @@ def test_is_charging_respects_threshold():
     assert supervisor.is_charging(25) is True
     assert supervisor.is_charging(20) is True
     assert supervisor.is_charging(19.9) is False
-
-
-def test_should_stop_requires_low_power_and_min_time():
-    config = make_config(charging_w_threshold=20, low_power_consecutive_count=2, min_on_time_sec=100)
-    supervisor = ChargingSupervisor(config)
-
-    assert supervisor.should_stop(5, low_counter=2, min_on_elapsed=150) is True
-    assert supervisor.should_stop(5, low_counter=1, min_on_elapsed=150) is False
-    assert supervisor.should_stop(5, low_counter=2, min_on_elapsed=50) is False
-    assert supervisor.should_stop(30, low_counter=3, min_on_elapsed=200) is False
-
-
-def test_recheck_confirms_charging_with_any_high_reading():
-    supervisor = ChargingSupervisor(make_config(charging_w_threshold=15))
-    assert supervisor.recheck_confirms_charging([5, 8, 10]) is False
-    assert supervisor.recheck_confirms_charging([5, 18, 8]) is True

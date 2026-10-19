@@ -296,7 +296,6 @@ class BluettiMQTTService:
             if not topic:
                 return
             self.client.publish(topic, state)
-            self.ac_output_on = state == "ON"
         else:
             logging.debug("Invalid state for AC output")
 

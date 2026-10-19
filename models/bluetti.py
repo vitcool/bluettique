@@ -1,4 +1,3 @@
-import logging
 import time
 
 class BluettiStatus:
@@ -45,24 +44,6 @@ class BluettiStatus:
             "dc_input_power": self.dc_input_power,
             "info_received": self.info_received,
         }
-
-    def reset_status(self):
-        """Reset all status attributes to None (or default values)."""
-        self.total_battery_percent = None
-        self.battery_updated_at = None
-        self.pack_details2_percent = None
-        self.pack_details2_voltage = None
-        self.pack_details3_percent = None
-        self.pack_details3_voltage = None
-        self.ac_output_on = None
-        self.dc_output_on = None
-        self.ac_output_power = None
-        self.dc_output_power = None
-        self.ac_input_power = None
-        self.dc_input_power = None
-        self.device_connected = False
-        self.info_received = False
-        logging.debug("Bluetti status reset to default.")
 
     def reset_output_status(self):
         self.ac_output_on = False

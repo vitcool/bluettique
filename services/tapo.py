@@ -12,12 +12,9 @@ class TapoService:
         # Prefer a dedicated charging socket identifier if provided (e.g., IP)
         self.ip_address = ip_address or os.getenv("CHARGING_SOCKET_DEVICE_ID") or os.getenv("TAPO_IP_ADDRESS")
         self.device = None
-        # Skip re-login when we already have a paired device
-        self.initialized = False
 
     async def initialize(self):
         # Always clear session and re-login to avoid stale/expired sessions.
-        self.initialized = False
         self.device = None
         logging.info("TAPO: Reconnecting to device %s", self.ip_address)
         try:
@@ -31,7 +28,6 @@ class TapoService:
         try:
             client = ApiClient(self.tapo_username, self.tapo_password)
             self.device = await client.p110(self.ip_address)
-            self.initialized = True
         except Exception as e:
             logging.debug(f"TAPO: Login failed with error: {e}")
             raise
@@ -42,7 +38,6 @@ class TapoService:
             await self.device.on()
         except Exception:
             # Session may be stale; reset and retry once
-            self.initialized = False
             self.device = None
             logging.debug("TAPO: turn_on failed; resetting session and retrying")
             await self.initialize()
@@ -53,7 +48,6 @@ class TapoService:
         try:
             await self.device.off()
         except Exception:
-            self.initialized = False
             self.device = None
             logging.debug("TAPO: turn_off failed; resetting session and retrying")
             await self.initialize()
@@ -64,7 +58,6 @@ class TapoService:
             return await self.device.get_device_info()
         except Exception:
             # Force re-login on next attempt after auth/network failures
-            self.initialized = False
             self.device = None
             logging.debug("TAPO: Failed to get state; session will be reset")
             raise

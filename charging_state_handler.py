@@ -30,8 +30,6 @@ class WaitPowerState(ChargingState):
                 if await handler.skip_start_if_battery_blocks():
                     await asyncio.sleep(handler.config.check_interval_sec)
                     return
-                handler.low_power_counter = 0
-                handler.stable_checks_remaining = handler.config.stable_power_checks
                 handler.set_state(StartChargingState(), "First launch with TAPO online")
                 return
 
@@ -61,8 +59,6 @@ class WaitPowerState(ChargingState):
                 await asyncio.sleep(handler.config.check_interval_sec)
                 return
             handler.reset_offline_tracking()
-            handler.low_power_counter = 0
-            handler.stable_checks_remaining = handler.config.stable_power_checks
             handler.set_state(StartChargingState(), "TAPO back online after offline")
             return
 
@@ -80,7 +76,6 @@ class StartChargingState(ChargingState):
             handler.bluetti_controller.turn_ac("OFF")
             handler.socket_on_at = time.monotonic()
             handler.first_power_check_at = handler.socket_on_at + handler.config.first_power_check_delay_sec
-            handler.low_power_counter = 0
             handler.stable_checks_remaining = handler.config.stable_power_checks
             handler.set_state(MonitorChargingState(), "Socket turned on")
         except Exception:
@@ -160,80 +155,14 @@ class MonitorChargingState(ChargingState):
             await asyncio.sleep(min(handler.config.check_interval_sec, remaining))
             return
 
-        if is_charging:
-            handler.low_power_counter = 0
-        else:
-            handler.low_power_counter += 1
-
         logging.info(
-            "Charging: Power check power=%.2fW threshold=%s low_counter=%s elapsed_on=%.1fs",
+            "Charging: Power check power=%.2fW threshold=%s elapsed_on=%.1fs",
             float(power) if power is not None else -1,
             handler.config.charging_w_threshold,
-            handler.low_power_counter,
             elapsed_on,
         )
 
-        if handler.supervisor.should_stop(power, handler.low_power_counter, elapsed_on):
-            handler.set_state(RecheckState(), "Low power sustained, triggering recheck")
-            return
-
         await asyncio.sleep(handler.config.check_interval_sec)
-
-
-class RecheckState(ChargingState):
-    async def handle(self, handler: "ChargingStateHandler"):
-        if not handler.config.recheck_cycle_enabled:
-            handler.set_state(StopChargingState(), "Recheck disabled; stopping after low power")
-            return
-
-        logging.info("Charging: RECHECK - cycling socket for verification")
-        try:
-            await handler.tapo_controller.stop_charging()
-        except Exception:
-            logging.warning("Charging: Failed to turn off during recheck", exc_info=True)
-
-        await asyncio.sleep(handler.config.recheck_off_sec)
-
-        try:
-            await handler.tapo_controller.start_charging()
-            handler.socket_on_at = time.monotonic()
-            handler.first_power_check_at = handler.socket_on_at + handler.config.first_power_check_delay_sec
-        except Exception:
-            logging.warning("Charging: Failed to turn on during recheck, returning to WAIT_POWER", exc_info=True)
-            handler.set_state(WaitPowerState(), "Recheck restart failed")
-            return
-
-        quick_readings = []
-        for idx in range(handler.config.recheck_quick_checks):
-            await asyncio.sleep(handler.config.recheck_quick_interval_sec)
-            try:
-                power = await handler.tapo_controller.get_current_power()
-                quick_readings.append(power)
-                logging.info(
-                    "Charging: Recheck [%s/%s] power=%.2fW threshold=%s",
-                    idx + 1,
-                    handler.config.recheck_quick_checks,
-                    float(power) if power is not None else -1,
-                    handler.config.charging_w_threshold,
-                )
-                if handler.supervisor.is_charging(power):
-                    handler.low_power_counter = 0
-                    handler.stable_checks_remaining = handler.config.stable_power_checks
-                    handler.set_state(MonitorChargingState(), "Charging detected during recheck")
-                    return
-            except Exception:
-                logging.warning("Charging: Recheck power read failed", exc_info=True)
-                handler.set_state(WaitPowerState(), "Recheck power read failed")
-                return
-
-        keep_charging = handler.supervisor.recheck_confirms_charging(quick_readings)
-        if keep_charging:
-            handler.low_power_counter = 0
-            handler.stable_checks_remaining = handler.config.stable_power_checks
-            handler.set_state(MonitorChargingState(), "Recheck kept charging")
-            return
-
-        handler.set_state(StopChargingState(), "Recheck confirmed low power")
 
 
 class StopChargingState(ChargingState):
@@ -244,7 +173,6 @@ class StopChargingState(ChargingState):
         except Exception:
             logging.warning("Charging: Failed to stop charging cleanly", exc_info=True)
 
-        handler.low_power_counter = 0
         handler.socket_on_at = None
         handler.first_power_check_at = None
         handler.stable_checks_remaining = handler.config.stable_power_checks
@@ -265,7 +193,6 @@ class ChargingStateHandler:
         self.state: ChargingState = WaitPowerState()
         self.tapo_controller = tapo_controller
         self.bluetti_controller = bluetti_controller
-        self.low_power_counter = 0
         self.socket_on_at: Optional[float] = None
         self.first_power_check_at: Optional[float] = None
         self.stable_checks_remaining = self.config.stable_power_checks

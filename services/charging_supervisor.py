@@ -1,6 +1,5 @@
 import os
 from dataclasses import dataclass
-from typing import List
 
 
 def _int_env(name: str, default: int) -> int:
@@ -85,15 +84,3 @@ class ChargingSupervisor:
             return float(power_w) >= self.config.charging_w_threshold
         except (TypeError, ValueError):
             return False
-
-    def should_stop(self, power_w: float | int | None, low_counter: int, min_on_elapsed: float) -> bool:
-        """Decide whether a sustained low-power period justifies stopping."""
-        return (
-            low_counter >= self.config.low_power_consecutive_count
-            and min_on_elapsed >= self.config.min_on_time_sec
-            and not self.is_charging(power_w)
-        )
-
-    def recheck_confirms_charging(self, power_readings: List[float | int | None]) -> bool:
-        """Return True if any quick recheck reading shows charging."""
-        return any(self.is_charging(reading) for reading in power_readings)

@@ -74,7 +74,6 @@ class BoilerState:
     RUNNING = "Running"
     PAUSED = "Paused"
     COMPLETED = "Completed"
-    EXPIRED = "Expired"
 
 
 class BoilerScheduler:
