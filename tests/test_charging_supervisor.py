@@ -1,26 +1,5 @@
-from services.charging_supervisor import ChargingSupervisor, ChargingConfig
-
-
-def make_config(**overrides) -> ChargingConfig:
-    defaults = dict(
-        charging_w_threshold=20,
-        low_power_consecutive_count=3,
-        check_interval_sec=900,
-        first_power_check_delay_sec=30,
-        startup_grace_sec=90,
-        min_on_time_sec=1200,
-        stable_power_checks=2,
-        stable_power_interval_sec=60,
-        recheck_cycle_enabled=True,
-        recheck_off_sec=90,
-        recheck_quick_checks=3,
-        recheck_quick_interval_sec=20,
-        ac_retry_interval_sec=30,
-        ac_retry_max_attempts=10,
-        ac_zero_power_off_sec=300,
-    )
-    defaults.update(overrides)
-    return ChargingConfig(**defaults)
+from services.charging_supervisor import ChargingSupervisor
+from tests.fakes import make_config
 
 
 def test_is_charging_respects_threshold():
