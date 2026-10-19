@@ -6,6 +6,7 @@ import logging
 import shutil
 import threading
 from models.bluetti import BluettiStatus
+from utils.env import int_env
 import paho.mqtt.client as mqtt
 from services.runtime_status import runtime_status_store
 
@@ -17,11 +18,11 @@ class BluettiMQTTService:
         self.device_name = os.getenv("BLUETTI_DEVICE_NAME")
         self.broker_interval = os.getenv("BLUETTI_BROKER_INTERVAL", "30")
         self.broker_connection_timeout = max(
-            int(os.getenv("BLUETTI_BROKER_CONNECTION_TIMEOUT", "90")), 90
+            int_env("BLUETTI_BROKER_CONNECTION_TIMEOUT", 90), 90
         )
         # Retries for pairing the first time; keeps runs resilient to flaky BT.
-        self.connect_retries = max(int(os.getenv("BLUETTI_BROKER_RETRIES", "3")), 1)
-        self.connect_retry_delay = max(int(os.getenv("BLUETTI_BROKER_RETRY_DELAY", "5")), 1)
+        self.connect_retries = int_env("BLUETTI_BROKER_RETRIES", 3, min_value=1)
+        self.connect_retry_delay = int_env("BLUETTI_BROKER_RETRY_DELAY", 5, min_value=1)
         self.broker_adapter = os.getenv("BLUETTI_BROKER_ADAPTER")
         self.client = mqtt.Client()
 

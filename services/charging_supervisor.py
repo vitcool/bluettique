@@ -1,20 +1,6 @@
-import os
 from dataclasses import dataclass
 
-
-def _int_env(name: str, default: int) -> int:
-    """Parse an int env var with a safe fallback."""
-    try:
-        return int(os.getenv(name, default))
-    except (TypeError, ValueError):
-        return default
-
-
-def _bool_env(name: str, default: bool) -> bool:
-    raw = os.getenv(name)
-    if raw is None:
-        return default
-    return raw.strip().lower() in {"1", "true", "yes", "y", "on"}
+from utils.env import bool_env as _bool_env, int_env as _int_env
 
 
 @dataclass

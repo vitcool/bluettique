@@ -9,6 +9,7 @@ from typing import Optional, Tuple
 
 from services.tapo import TapoService
 from services.runtime_status import runtime_status_store
+from utils.env import bool_env, float_env, int_env
 from utils.logger import create_default_formatter
 
 
@@ -54,15 +55,15 @@ class BoilerConfig:
         window_start = _parse_time(os.getenv("BOILER_WINDOW_START", "00:00"), "00:00")
         window_end = _parse_time(os.getenv("BOILER_WINDOW_END", "06:00"), "06:00")
         return cls(
-            enabled=os.getenv("BOILER_ENABLED", "false").lower() in {"1", "true", "yes", "on"},
+            enabled=bool_env("BOILER_ENABLED", False),
             username=os.getenv("BOILER_TAPO_EMAIL") or os.getenv("TAPO_USERNAME"),
             password=os.getenv("BOILER_TAPO_PASSWORD") or os.getenv("TAPO_PASSWORD"),
             ip_address=os.getenv("BOILER_TAPO_IP"),
             window_start=window_start,
             window_end=window_end,
-            total_run_sec=max(int(os.getenv("BOILER_TOTAL_RUN_SEC", "7200")), 0),
-            poll_sec=max(int(os.getenv("BOILER_POLL_SEC", "300")), 1),
-            active_w_threshold=float(os.getenv("BOILER_ACTIVE_W_THRESHOLD", "0")),
+            total_run_sec=int_env("BOILER_TOTAL_RUN_SEC", 7200, min_value=0),
+            poll_sec=int_env("BOILER_POLL_SEC", 300, min_value=1),
+            active_w_threshold=float_env("BOILER_ACTIVE_W_THRESHOLD", 0.0),
             state_file=os.getenv("BOILER_STATE_FILE", "logs/boiler_logs/boiler_state.json"),
             log_file=os.getenv("BOILER_LOG_FILE", "logs/boiler_logs/boiler.log"),
         )
