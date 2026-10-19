@@ -7,6 +7,7 @@ from services.ac_recovery import AcRecoveryTask
 from services.battery_guard import BatteryGuard
 from services.charging_supervisor import ChargingSupervisor, ChargingConfig
 from services.failure_streak import FailureStreak
+from services.outage_tracker import OutageTracker
 from services.runtime_status import runtime_status_store
 
 
@@ -203,9 +204,7 @@ class ChargingStateHandler:
         self.socket_on_at: Optional[float] = None
         self.first_power_check_at: Optional[float] = None
         self.stable_checks_remaining = self.config.stable_power_checks
-        self.offline_seen_in_wait = False
-        self.offline_streak = FailureStreak(self.config.offline_confirm_failures, self.config.offline_confirm_sec)
-        self.ac_keep_alive_sent = False
+        self.outage = OutageTracker(self.config)
         self.battery_guard = BatteryGuard(self.config, bluetti_controller, tapo_controller)
         self.monitor_streak = FailureStreak(self.config.monitor_read_failures, self.config.monitor_read_fail_sec)
         self.first_launch = True
@@ -237,8 +236,7 @@ class ChargingStateHandler:
         self.reset_monitor_read_failures()
         if isinstance(state, WaitPowerState):
             # Require a fresh offline->online observation each time we re-enter WAIT_POWER
-            self.offline_seen_in_wait = False
-            self.reset_offline_tracking()
+            self.outage.begin_wait()
         else:
             self.ac_recovery.cancel()
 
@@ -247,20 +245,35 @@ class ChargingStateHandler:
         return self.ac_recovery.task
 
     @property
+    def offline_seen_in_wait(self) -> bool:
+        return self.outage.seen
+
+    @offline_seen_in_wait.setter
+    def offline_seen_in_wait(self, value: bool):
+        self.outage.seen = value
+
+    @property
+    def ac_keep_alive_sent(self) -> bool:
+        return self.outage.keep_alive_sent
+
+    @ac_keep_alive_sent.setter
+    def ac_keep_alive_sent(self, value: bool):
+        self.outage.keep_alive_sent = value
+
+    @property
     def offline_failures(self) -> int:
-        return self.offline_streak.count
+        return self.outage.streak.count
 
     @property
     def monitor_read_failures(self) -> int:
         return self.monitor_streak.count
 
     def reset_offline_tracking(self):
-        self.offline_streak.reset()
-        self.ac_keep_alive_sent = False
+        self.outage.reset()
 
     def register_offline_failure(self) -> bool:
         """Record a failed poll; True once the outage is long enough to count as a disconnect."""
-        return self.offline_streak.register()
+        return self.outage.register_failure()
 
     def register_monitor_read_failure(self) -> bool:
         """Record a failed power read in MONITOR; True once failures are long enough to count as an outage."""

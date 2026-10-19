@@ -144,7 +144,7 @@ async def test_set_state_to_wait_resets_outage_tracking_but_keeps_task(make_hand
     handler.schedule_offline_recovery_check()
     task = handler.offline_recovery_task
     handler.offline_seen_in_wait = True
-    handler.offline_streak.register()
+    handler.outage.register_failure()
     handler.ac_keep_alive_sent = True
     handler.set_state(WaitPowerState(), "test")
 
