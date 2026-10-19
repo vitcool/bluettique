@@ -17,6 +17,7 @@ def make_config(**overrides) -> ChargingConfig:
         recheck_quick_interval_sec=20,
         ac_retry_interval_sec=30,
         ac_retry_max_attempts=10,
+        ac_zero_power_off_sec=300,
     )
     defaults.update(overrides)
     return ChargingConfig(**defaults)

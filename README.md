@@ -74,6 +74,11 @@ STARTUP_GRACE_SEC=90
 MIN_ON_TIME_SEC=1200
 STABLE_POWER_CHECKS=2
 STABLE_POWER_INTERVAL_SEC=60
+OFFLINE_CONFIRM_FAILURES=1
+OFFLINE_CONFIRM_SEC=120
+CHARGE_SKIP_ABOVE_PERCENT=98
+MONITOR_READ_FAILURES=3
+MONITOR_READ_FAIL_SEC=120
 RECHECK_CYCLE_ENABLED=true
 RECHECK_OFF_SEC=90
 RECHECK_QUICK_CHECKS=3
@@ -137,6 +142,7 @@ Make sure to replace the placeholders with your actual credentials and settings.
 - On startup the app pairs with the configured Tapo P110 (`CHARGING_SOCKET_DEVICE_ID` or `TAPO_IP_ADDRESS`) and turns the socket on.
 - A charging supervisor monitors instantaneous power to decide whether charging is active (`power >= CHARGING_W_THRESHOLD`).
 - After a startup grace period and minimum on-time, sustained low power (`LOW_POWER_CONSECUTIVE_COUNT`) triggers a recheck cycle; if low power persists the socket is turned off.
+- Charging never starts when the Bluetti battery is at or above `CHARGE_SKIP_ABOVE_PERCENT` (the socket is forced off instead; unknown battery level does not block). A plug is treated as disconnected after `OFFLINE_CONFIRM_FAILURES` consecutive failed polls or `OFFLINE_CONFIRM_SEC` offline; failed power reads while charging are retried for `MONITOR_READ_FAILURES` / `MONITOR_READ_FAIL_SEC` before falling back to WAIT_POWER.
 - Periodic checks are spaced by `CHECK_INTERVAL_SEC`; quick rechecks use `RECHECK_QUICK_*` settings. Stable power confirmation uses `STABLE_POWER_*`.
 - All state transitions and power checks are logged for observability; failures drop back to the wait state and retry.
 
