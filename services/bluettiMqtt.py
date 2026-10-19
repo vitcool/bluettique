@@ -118,35 +118,26 @@ class BluettiMQTTService:
             "dc_input_power": ("dc_input_power", float),
         }
 
-        if "pack_details2" in topic:
-            pack = self._extract_pack_details(payload)
-            self.status.update_status("pack_details2_percent", pack["percent"])
-            self.status.update_status("pack_details2_voltage", pack["voltage"])
-            try:
-                runtime_status_store.update_bluetti(self.status.get_status())
-            except Exception:
-                logging.debug("Runtime status update failed", exc_info=True)
-            return
-
-        if "pack_details3" in topic:
-            pack = self._extract_pack_details(payload)
-            self.status.update_status("pack_details3_percent", pack["percent"])
-            self.status.update_status("pack_details3_voltage", pack["voltage"])
-            try:
-                runtime_status_store.update_bluetti(self.status.get_status())
-            except Exception:
-                logging.debug("Runtime status update failed", exc_info=True)
-            return
+        for key in ("pack_details2", "pack_details3"):
+            if key in topic:
+                pack = self._extract_pack_details(payload)
+                self.status.update_status(f"{key}_percent", pack["percent"])
+                self.status.update_status(f"{key}_voltage", pack["voltage"])
+                self._publish_runtime_status()
+                return
 
         for key, (attr, transform) in topic_map.items():
             if key in topic:
                 value = transform(payload)
                 self.status.update_status(attr, value)
-                try:
-                    runtime_status_store.update_bluetti(self.status.get_status())
-                except Exception:
-                    logging.debug("Runtime status update failed", exc_info=True)
+                self._publish_runtime_status()
                 break
+
+    def _publish_runtime_status(self):
+        try:
+            runtime_status_store.update_bluetti(self.status.get_status())
+        except Exception:
+            logging.debug("Runtime status update failed", exc_info=True)
 
     @staticmethod
     def _extract_pack_details(payload: str) -> dict[str, float | None]:
