@@ -65,9 +65,15 @@ class FakeBluetti:
         self._idx = 0
         self.turn_ac_calls = []
         self.initialize_calls = 0
+        self.power_off_calls = []
+        self.power_off_confirmed = True
 
     async def initialize(self):
         self.initialize_calls += 1
+
+    async def power_off_until_confirmed(self, max_attempts, quiet_sec):
+        self.power_off_calls.append((max_attempts, quiet_sec))
+        return self.power_off_confirmed
 
     def turn_ac(self, state: str):
         self.turn_ac_calls.append(state)

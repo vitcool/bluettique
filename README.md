@@ -75,6 +75,8 @@ MONITOR_READ_FAIL_SEC=120
 AC_RETRY_INTERVAL_SEC=30
 AC_RETRY_MAX_ATTEMPTS=10
 AC_ZERO_POWER_OFF_SEC=300
+POWER_OFF_MAX_ATTEMPTS=5
+POWER_OFF_QUIET_SEC=60
 
 # Read but currently unused (the recheck cycle is not reachable): LOW_POWER_CONSECUTIVE_COUNT,
 # MIN_ON_TIME_SEC, RECHECK_CYCLE_ENABLED, RECHECK_OFF_SEC, RECHECK_QUICK_CHECKS, RECHECK_QUICK_INTERVAL_SEC
@@ -109,6 +111,8 @@ WEBAPP_PORT=8080
 WEBAPP_STATUS_REFRESH_MS=2000
 WEBAPP_LOGS_REFRESH_MS=2000
 CONNECTION_WINDOW_MIN=5
+# Dashboard toggles (e.g. "Power off after charging") persist here
+SETTINGS_FILE=logs/settings.json
 ```
 
 Make sure to replace the placeholders with your actual credentials and settings.

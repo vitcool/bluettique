@@ -156,6 +156,18 @@ h1 {
     font-size: 0.9rem;
 }
 
+.card-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    color: var(--muted);
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+
+.card-toggle input { cursor: pointer; }
+
 /* Emphasize live power readouts only (keep generic meta like "Telemetry" unchanged). */
 #acOutputDetail,
 #inputDetail {

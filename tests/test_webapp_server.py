@@ -330,3 +330,15 @@ def test_api_status_drops_intervals_without_remaining_progress(monkeypatch, tmp_
     assert payload["boiler"]["on_intervals"] == [
         {"start": "2026-02-10 00:00:03", "end": "2026-02-10 01:50:19"},
     ]
+
+
+def test_api_settings_roundtrip(isolated_user_settings):
+    with server.app.test_client() as client:
+        assert client.get("/api/status").get_json()["settings"]["power_off_after_charge"] is False
+
+        response = client.post("/api/settings", json={"power_off_after_charge": True})
+        assert response.status_code == 200
+        assert client.get("/api/status").get_json()["settings"]["power_off_after_charge"] is True
+
+        assert client.post("/api/settings", json={"power_off_after_charge": "yes"}).status_code == 400
+    assert isolated_user_settings.power_off_after_charge is True

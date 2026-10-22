@@ -1,3 +1,4 @@
+import asyncio
 from types import SimpleNamespace
 
 import pytest
@@ -112,3 +113,52 @@ def test_failure_streak_confirms_on_count_or_duration():
 
     by_time = FailureStreak(max_failures=100, max_sec=0)
     assert by_time.register() is True
+
+
+@pytest.mark.asyncio
+async def test_power_off_until_confirmed_retries_until_telemetry_stops(monkeypatch):
+    import time
+
+    from controllers.bluetti import BluettiController
+
+    controller = BluettiController()
+    controller.connection_set = True
+    controller.bluetti.device_connected = True
+    sent = []
+    controller.bluetti.power_off = lambda: sent.append(time.monotonic())
+    monkeypatch.setattr(controller, "power_off", lambda: sent.append("teardown"))
+
+    async def fast_sleep(_):
+        # Telemetry keeps flowing for the first command, stops after the second.
+        if len([s for s in sent if s != "teardown"]) < 2:
+            controller.bluetti.status.battery_updated_at = time.monotonic()
+        await real_sleep(0)
+
+    real_sleep = asyncio.sleep
+    monkeypatch.setattr("controllers.bluetti.asyncio.sleep", fast_sleep)
+
+    assert await controller.power_off_until_confirmed(max_attempts=3, quiet_sec=0.01) is True
+    assert len(sent) == 3 and sent[-1] == "teardown"
+
+
+@pytest.mark.asyncio
+async def test_power_off_until_confirmed_gives_up(monkeypatch):
+    import time
+
+    from controllers.bluetti import BluettiController
+
+    controller = BluettiController()
+    controller.connection_set = True
+    controller.bluetti.device_connected = True
+    sent = []
+    controller.bluetti.power_off = lambda: sent.append(1)
+    real_sleep = asyncio.sleep
+
+    async def fast_sleep(_):
+        controller.bluetti.status.battery_updated_at = time.monotonic()
+        await real_sleep(0)
+
+    monkeypatch.setattr("controllers.bluetti.asyncio.sleep", fast_sleep)
+
+    assert await controller.power_off_until_confirmed(max_attempts=2, quiet_sec=0.01) is False
+    assert len(sent) == 2

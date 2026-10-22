@@ -176,3 +176,35 @@ async def test_offline_recovery_turns_ac_off_after_zero_power(make_handler):
 
     # the fake keeps reporting AC on, so the recovery loop may fire again; the first call is what matters
     assert handler.bluetti_controller.turn_ac_calls[0] == "OFF"
+
+
+@pytest.mark.asyncio
+async def test_stop_does_not_power_off_by_default(make_handler):
+    handler = make_handler()
+    handler.state = StopChargingState()
+    await handler.state.handle(handler)
+
+    assert handler.bluetti_controller.power_off_calls == []
+    assert isinstance(handler.state, WaitPowerState)
+
+
+@pytest.mark.asyncio
+async def test_stop_powers_off_when_setting_enabled(make_handler, isolated_user_settings):
+    isolated_user_settings.set_power_off_after_charge(True)
+    handler = make_handler(power_off_max_attempts=4, power_off_quiet_sec=30)
+    handler.state = StopChargingState()
+    await handler.state.handle(handler)
+
+    assert handler.bluetti_controller.power_off_calls == [(4, 30)]
+    assert isinstance(handler.state, WaitPowerState)
+
+
+@pytest.mark.asyncio
+async def test_stop_continues_when_power_off_unconfirmed(make_handler, isolated_user_settings):
+    isolated_user_settings.set_power_off_after_charge(True)
+    handler = make_handler()
+    handler.bluetti_controller.power_off_confirmed = False
+    handler.state = StopChargingState()
+    await handler.state.handle(handler)
+
+    assert isinstance(handler.state, WaitPowerState)

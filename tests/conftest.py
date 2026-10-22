@@ -29,3 +29,11 @@ async def make_handler():
     for task in tasks:
         task.cancel()
     await asyncio.gather(*tasks, return_exceptions=True)
+
+
+@pytest.fixture(autouse=True)
+def isolated_user_settings(tmp_path):
+    from services.user_settings import user_settings
+
+    user_settings.configure(str(tmp_path / "settings.json"))
+    yield user_settings

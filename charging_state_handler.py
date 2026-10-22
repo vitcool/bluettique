@@ -9,6 +9,7 @@ from services.charging_supervisor import ChargingSupervisor, ChargingConfig
 from services.failure_streak import FailureStreak
 from services.outage_tracker import OutageTracker
 from services.runtime_status import runtime_status_store
+from services.user_settings import user_settings
 
 
 def _power_w(power) -> float:
@@ -180,6 +181,18 @@ class StopChargingState(ChargingState):
             await handler.tapo_controller.stop_charging()
         except Exception:
             logging.warning("Charging: Failed to stop charging cleanly", exc_info=True)
+
+        if user_settings.power_off_after_charge:
+            try:
+                logging.info("Charging: Charging finished; powering Bluetti off (dashboard setting)")
+                confirmed = await handler.bluetti_controller.power_off_until_confirmed(
+                    handler.config.power_off_max_attempts,
+                    handler.config.power_off_quiet_sec,
+                )
+                if not confirmed:
+                    logging.warning("Charging: Bluetti power off not confirmed; giving up")
+            except Exception:
+                logging.warning("Charging: Failed to power Bluetti off after charging", exc_info=True)
 
         handler.socket_on_at = None
         handler.first_power_check_at = None

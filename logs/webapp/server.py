@@ -8,6 +8,7 @@ from typing import Any, Dict, List
 
 from flask import Flask, jsonify, request
 from services.runtime_status import runtime_status_store
+from services.user_settings import user_settings
 
 BASE_DIR = Path(__file__).resolve().parent
 LOG_SOURCES = [
@@ -405,6 +406,7 @@ def build_status_payload() -> Dict[str, Any]:
     if not generated_at:
         generated_at = datetime.now(timezone.utc).isoformat()
     status_payload["generated_at"] = generated_at
+    status_payload["settings"] = user_settings.snapshot()
 
     return status_payload
 
@@ -525,6 +527,27 @@ def api_logs():
 def api_status():
     status_payload = build_status_payload()
     return jsonify({"ok": True, **status_payload})
+
+
+@app.post("/api/settings")
+def api_update_settings():
+    body = request.get_json(silent=True)
+    value = body.get("power_off_after_charge") if isinstance(body, dict) else None
+    if not isinstance(value, bool):
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": {
+                        "code": "invalid_settings",
+                        "message": "Expected JSON body {\"power_off_after_charge\": true|false}.",
+                    },
+                }
+            ),
+            400,
+        )
+    user_settings.set_power_off_after_charge(value)
+    return jsonify({"ok": True, "settings": user_settings.snapshot()})
 
 
 def run_web_server(host: str = "0.0.0.0", port: int = 8080):

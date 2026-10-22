@@ -16,6 +16,7 @@ const acStatus = document.getElementById('acStatus');
 const batteryPercentEl = document.getElementById('batteryPercent');
 const batteryTime = document.getElementById('batteryTime');
 const batteryExtra = document.getElementById('batteryExtra');
+const powerOffAfterChargeToggle = document.getElementById('powerOffAfterChargeToggle');
 const inputStatus = document.getElementById('inputStatus');
 const inputDetail = document.getElementById('inputDetail');
 const connStatus = document.getElementById('connStatus');
@@ -486,6 +487,36 @@ function renderChargingState(chargingState) {
     chargingStateMeta.textContent = `Updated ${formatWithRelative(chargingState.updated_at)}`;
 }
 
+function renderSettings(settings) {
+    // Don't clobber the checkbox while a save is in flight.
+    if (!settings || powerOffAfterChargeToggle.disabled) {
+        return;
+    }
+    powerOffAfterChargeToggle.checked = Boolean(settings.power_off_after_charge);
+}
+
+powerOffAfterChargeToggle.addEventListener('change', async () => {
+    const wanted = powerOffAfterChargeToggle.checked;
+    powerOffAfterChargeToggle.disabled = true;
+    try {
+        const response = await fetch('/api/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ power_off_after_charge: wanted }),
+        });
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        const data = await response.json();
+        powerOffAfterChargeToggle.checked = Boolean(data?.settings?.power_off_after_charge);
+    } catch (error) {
+        console.error('Error saving settings:', error);
+        powerOffAfterChargeToggle.checked = !wanted;
+    } finally {
+        powerOffAfterChargeToggle.disabled = false;
+    }
+});
+
 async function fetchStatus() {
     try {
         const response = await fetch('/api/status', { cache: 'no-cache' });
@@ -502,6 +533,7 @@ async function fetchStatus() {
         renderPowerSummary(buildPowerSummary(data));
         renderBoilerCard(data?.boiler || null);
         renderChargingState(data?.charging_state || null);
+        renderSettings(data?.settings || null);
     } catch (error) {
         console.error('Error fetching status:', error);
     }

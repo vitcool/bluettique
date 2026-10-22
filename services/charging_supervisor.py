@@ -28,6 +28,8 @@ class ChargingConfig:
     battery_unknown_wait_sec: int = 20
     monitor_read_failures: int = 3
     monitor_read_fail_sec: int = 120
+    power_off_max_attempts: int = 5
+    power_off_quiet_sec: int = 60
 
     @classmethod
     def from_env(cls) -> "ChargingConfig":
@@ -55,6 +57,8 @@ class ChargingConfig:
             battery_unknown_wait_sec=_int_env("BATTERY_UNKNOWN_WAIT_SEC", 20),
             monitor_read_failures=_int_env("MONITOR_READ_FAILURES", 3),
             monitor_read_fail_sec=_int_env("MONITOR_READ_FAIL_SEC", 120),
+            power_off_max_attempts=_int_env("POWER_OFF_MAX_ATTEMPTS", 5, min_value=1),
+            power_off_quiet_sec=_int_env("POWER_OFF_QUIET_SEC", 60, min_value=1),
         )
 
 
