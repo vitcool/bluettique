@@ -342,3 +342,11 @@ def test_api_settings_roundtrip(isolated_user_settings):
 
         assert client.post("/api/settings", json={"power_off_after_charge": "yes"}).status_code == 400
     assert isolated_user_settings.power_off_after_charge is True
+
+
+def test_api_status_reports_boiler_enabled(monkeypatch):
+    with server.app.test_client() as client:
+        monkeypatch.delenv("BOILER_ENABLED", raising=False)
+        assert client.get("/api/status").get_json()["boiler_enabled"] is False
+        monkeypatch.setenv("BOILER_ENABLED", "true")
+        assert client.get("/api/status").get_json()["boiler_enabled"] is True

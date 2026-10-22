@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from flask import Flask, jsonify, request
+from utils.env import bool_env
 from services.runtime_status import runtime_status_store
 from services.user_settings import user_settings
 
@@ -407,6 +408,7 @@ def build_status_payload() -> Dict[str, Any]:
         generated_at = datetime.now(timezone.utc).isoformat()
     status_payload["generated_at"] = generated_at
     status_payload["settings"] = user_settings.snapshot()
+    status_payload["boiler_enabled"] = bool_env("BOILER_ENABLED", False)
 
     return status_payload
 

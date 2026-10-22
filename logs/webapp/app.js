@@ -5,6 +5,7 @@ const refreshLogsBtn = document.getElementById('refreshLogsBtn');
 const logTitle = document.getElementById('logTitle');
 const logDaySelect = document.getElementById('logDaySelect');
 const viewButtons = document.querySelectorAll('.view-toggle button');
+const boilerLogBtn = document.querySelector('.view-toggle button[data-view="boiler-log"]');
 const statusViewBtn = document.querySelector('.view-toggle button[data-view="status"]');
 const topbar = document.querySelector('.topbar');
 
@@ -487,6 +488,14 @@ function renderChargingState(chargingState) {
     chargingStateMeta.textContent = `Updated ${formatWithRelative(chargingState.updated_at)}`;
 }
 
+function renderBoilerEnabled(enabled) {
+    boilerCard.classList.toggle('hidden', !enabled);
+    boilerLogBtn.classList.toggle('hidden', !enabled);
+    if (!enabled && currentView === 'boiler-log') {
+        setView('charging-log');
+    }
+}
+
 function renderSettings(settings) {
     // Don't clobber the checkbox while a save is in flight.
     if (!settings || powerOffAfterChargeToggle.disabled) {
@@ -531,7 +540,11 @@ async function fetchStatus() {
         applyRefreshConfig(data?.connection || {});
 
         renderPowerSummary(buildPowerSummary(data));
-        renderBoilerCard(data?.boiler || null);
+        const boilerEnabled = data?.boiler_enabled !== false;
+        renderBoilerEnabled(boilerEnabled);
+        if (boilerEnabled) {
+            renderBoilerCard(data?.boiler || null);
+        }
         renderChargingState(data?.charging_state || null);
         renderSettings(data?.settings || null);
     } catch (error) {
