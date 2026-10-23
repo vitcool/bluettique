@@ -36,7 +36,7 @@ async def test_bluetti_dc_cycle(bluetti_controller: BluettiController):
 
 async def main(tapo_controller, bluetti_controller):
     setup_logging()
-    _start_web_server()
+    _start_web_server(bluetti_controller)
 
     boiler_task = None
 
@@ -79,7 +79,7 @@ async def main(tapo_controller, bluetti_controller):
         await charging_handler.handle_state()
 
 
-def _start_web_server():
+def _start_web_server(bluetti_controller):
     web_enabled = bool_env("WEBAPP_ENABLED", True)
     if not web_enabled:
         logging.info("Webapp server disabled by WEBAPP_ENABLED.")
@@ -97,6 +97,18 @@ def _start_web_server():
     )
 
     web_port = int_env("WEBAPP_PORT", 8080)
+    loop = asyncio.get_running_loop()
+    from logs.webapp.server import set_power_off_scheduler
+
+    set_power_off_scheduler(
+        lambda: asyncio.run_coroutine_threadsafe(
+            bluetti_controller.power_off_until_confirmed(
+                int_env("POWER_OFF_MAX_ATTEMPTS", 5, min_value=1),
+                int_env("POWER_OFF_QUIET_SEC", 60, min_value=1),
+            ),
+            loop,
+        )
+    )
     thread = threading.Thread(target=run_web_server, kwargs={"host": "0.0.0.0", "port": web_port}, daemon=True)
     thread.start()
     logging.info("Webapp server started on port %s", web_port)

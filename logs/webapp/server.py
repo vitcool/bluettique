@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 import re
+import logging
+from concurrent.futures import TimeoutError as FutureTimeoutError
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List
@@ -47,6 +49,13 @@ BOILER_STATE_TRANSITION_RE = re.compile(
 BOILER_RUNNING_REMAINING_RE = re.compile(r"\bBoiler:\s+Running;\s+remaining\s+([0-9]+(?:\.[0-9]+)?)s\b")
 
 app = Flask(__name__, static_folder=str(BASE_DIR), static_url_path="")
+_power_off_scheduler = None
+
+
+def set_power_off_scheduler(scheduler):
+    """Register the application's event-loop bridge for manual power-off requests."""
+    global _power_off_scheduler
+    _power_off_scheduler = scheduler
 
 
 def parse_limit(raw_limit: str | None) -> int:
@@ -550,6 +559,25 @@ def api_update_settings():
         )
     user_settings.set_power_off_after_charge(value)
     return jsonify({"ok": True, "settings": user_settings.snapshot()})
+
+
+@app.post("/api/power-off")
+def api_power_off():
+    if _power_off_scheduler is None:
+        return jsonify({"ok": False, "error": {"code": "power_off_unavailable", "message": "Power control is unavailable."}}), 503
+
+    try:
+        future = _power_off_scheduler()
+        confirmed = future.result(timeout=900)
+    except FutureTimeoutError:
+        return jsonify({"ok": False, "error": {"code": "power_off_timeout", "message": "Power-off is taking longer than expected. Check the Bluetti status."}}), 504
+    except Exception:
+        logging.exception("Manual Bluetti power-off failed")
+        return jsonify({"ok": False, "error": {"code": "power_off_failed", "message": "Could not power off the Bluetti."}}), 500
+
+    if not confirmed:
+        return jsonify({"ok": False, "error": {"code": "power_off_unconfirmed", "message": "The Bluetti did not confirm power-off."}}), 502
+    return jsonify({"ok": True, "message": "Bluetti power-off confirmed."})
 
 
 def run_web_server(host: str = "0.0.0.0", port: int = 8080):

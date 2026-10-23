@@ -18,6 +18,8 @@ const batteryPercentEl = document.getElementById('batteryPercent');
 const batteryTime = document.getElementById('batteryTime');
 const batteryExtra = document.getElementById('batteryExtra');
 const powerOffAfterChargeToggle = document.getElementById('powerOffAfterChargeToggle');
+const powerOffBtn = document.getElementById('powerOffBtn');
+const powerOffMessage = document.getElementById('powerOffMessage');
 const inputStatus = document.getElementById('inputStatus');
 const inputDetail = document.getElementById('inputDetail');
 const connStatus = document.getElementById('connStatus');
@@ -523,6 +525,22 @@ powerOffAfterChargeToggle.addEventListener('change', async () => {
         powerOffAfterChargeToggle.checked = !wanted;
     } finally {
         powerOffAfterChargeToggle.disabled = false;
+    }
+});
+
+powerOffBtn.addEventListener('click', async () => {
+    if (!window.confirm('Turn the Bluetti power station off now? Connected devices may lose power.')) return;
+    powerOffBtn.disabled = true;
+    powerOffMessage.textContent = 'Sending power-off command…';
+    try {
+        const response = await fetch('/api/power-off', { method: 'POST' });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data?.error?.message || `HTTP ${response.status}`);
+        powerOffMessage.textContent = data.message || 'Power-off confirmed.';
+    } catch (error) {
+        powerOffMessage.textContent = error.message || 'Power-off failed. Check the Bluetti status.';
+    } finally {
+        powerOffBtn.disabled = false;
     }
 });
 

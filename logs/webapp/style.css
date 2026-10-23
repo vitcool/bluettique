@@ -168,6 +168,20 @@ h1 {
 
 .card-toggle input { cursor: pointer; }
 
+.btn-power-off {
+    margin-top: 10px;
+    border: 1px solid rgba(248, 113, 113, 0.65);
+    background: rgba(248, 113, 113, 0.14);
+    color: var(--text);
+    border-radius: 9px;
+    padding: 8px 11px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.btn-power-off:hover { background: rgba(248, 113, 113, 0.24); }
+.btn-power-off:disabled { opacity: 0.6; cursor: wait; }
+
 /* Emphasize live power readouts only (keep generic meta like "Telemetry" unchanged). */
 #acOutputDetail,
 #inputDetail {
