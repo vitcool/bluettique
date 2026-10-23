@@ -363,8 +363,65 @@ function buildPowerSummary(data) {
         acOutputPowerTs: summary.acOutputPowerTs ?? data?.generated_at ?? null,
         lastMessageTs: summary.lastMessageTs ?? data?.connection?.last_message_ts ?? null,
         forcedOfflineTs: summary.forcedOfflineTs ?? null,
-        forcedAcOffTs: summary.forcedAcOffTs ?? null
+        forcedAcOffTs: summary.forcedAcOffTs ?? null,
+        batteryCapacityWh: data?.battery_capacity_wh ?? null,
+        pack2CapacityWh: data?.battery_pack2_capacity_wh ?? 0,
+        pack3CapacityWh: data?.battery_pack3_capacity_wh ?? 0
     };
+}
+
+function formatChargeDuration(totalMinutes) {
+    const minutes = Math.max(0, Math.ceil(totalMinutes));
+    const hours = Math.floor(minutes / 60);
+    const remainingMinutes = minutes % 60;
+    if (hours > 0 && remainingMinutes > 0) return `${hours}h ${remainingMinutes}m`;
+    if (hours > 0) return `${hours}h`;
+    return `${remainingMinutes}m`;
+}
+
+function renderChargeEstimate(summary) {
+    const hasBatteryPercent = summary.batteryPercent !== null && summary.batteryPercent !== undefined;
+    const hasCapacity = summary.batteryCapacityWh !== null && summary.batteryCapacityWh !== undefined;
+    const percent = Number(summary.batteryPercent);
+    const capacityWh = Number(summary.batteryCapacityWh);
+    const inputWatts = Number(summary.acInputPower ?? 0) + Number(summary.dcInputPower ?? 0);
+
+    if (!hasBatteryPercent || !hasCapacity || !Number.isFinite(percent) || !Number.isFinite(capacityWh) || capacityWh <= 0) {
+        batteryTime.textContent = 'Waiting for battery data…';
+        return;
+    }
+
+    let remainingWh = Math.max(0, capacityWh * (100 - percent) / 100);
+    const packs = [
+        { percent: summary.pack2Battery, voltage: summary.pack2Voltage, capacityWh: summary.pack2CapacityWh },
+        { percent: summary.pack3Battery, voltage: summary.pack3Voltage, capacityWh: summary.pack3CapacityWh }
+    ];
+    let includedPackCount = 0;
+    packs.forEach(pack => {
+        const hasPackPercent = pack.percent !== null && pack.percent !== undefined;
+        const packPercent = Number(pack.percent);
+        const packVoltage = Number(pack.voltage);
+        const packCapacityWh = Number(pack.capacityWh);
+        const isConnected = hasPackPercent && Number.isFinite(packPercent) && packPercent >= 0 &&
+            (!Number.isFinite(packVoltage) || packVoltage > 1);
+        if (isConnected && Number.isFinite(packCapacityWh) && packCapacityWh > 0) {
+            remainingWh += Math.max(0, packCapacityWh * (100 - packPercent) / 100);
+            includedPackCount += 1;
+        }
+    });
+    if (remainingWh === 0) {
+        batteryTime.textContent = 'Fully charged';
+        return;
+    }
+    if (!Number.isFinite(inputWatts) || inputWatts <= 0) {
+        batteryTime.textContent = `${Math.round(remainingWh)} Wh remaining`;
+        return;
+    }
+
+    const durationMinutes = (remainingWh / inputWatts) * 60;
+    const finishAt = new Date(Date.now() + durationMinutes * 60_000);
+    const packNote = includedPackCount ? ` • ${includedPackCount} expansion pack${includedPackCount === 1 ? '' : 's'}` : '';
+    batteryTime.textContent = `~${formatChargeDuration(durationMinutes)} to full (${Math.round(remainingWh)} Wh left) • ${formatTimeOnly(finishAt.toISOString())}${packNote}`;
 }
 
 function renderPowerSummary(summary) {
@@ -382,7 +439,7 @@ function renderPowerSummary(summary) {
 
     const pct = summary.batteryPercent;
     batteryPercentEl.textContent = typeof pct === 'number' && !isNaN(pct) ? Math.round(pct) : '—';
-    batteryTime.textContent = 'Telemetry';
+    renderChargeEstimate(summary);
 
     const pack2 = summary.pack2Battery;
     const pack2Voltage = summary.pack2Voltage;

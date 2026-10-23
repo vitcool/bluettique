@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from flask import Flask, jsonify, request
-from utils.env import bool_env
+from utils.env import bool_env, int_env
 from services.runtime_status import runtime_status_store
 from services.user_settings import user_settings
 
@@ -418,6 +418,9 @@ def build_status_payload() -> Dict[str, Any]:
     status_payload["generated_at"] = generated_at
     status_payload["settings"] = user_settings.snapshot()
     status_payload["boiler_enabled"] = bool_env("BOILER_ENABLED", False)
+    status_payload["battery_capacity_wh"] = int_env("BATTERY_CAPACITY_WH", 2048, min_value=1)
+    status_payload["battery_pack2_capacity_wh"] = int_env("BATTERY_PACK2_CAPACITY_WH", 0, min_value=0)
+    status_payload["battery_pack3_capacity_wh"] = int_env("BATTERY_PACK3_CAPACITY_WH", 0, min_value=0)
 
     return status_payload
 

@@ -77,6 +77,9 @@ AC_RETRY_MAX_ATTEMPTS=10
 AC_ZERO_POWER_OFF_SEC=300
 POWER_OFF_MAX_ATTEMPTS=5
 POWER_OFF_QUIET_SEC=60
+BATTERY_CAPACITY_WH=2048  # Built-in battery capacity used by the dashboard estimate
+BATTERY_PACK2_CAPACITY_WH=0  # First expansion battery; B230: 2048 Wh, B300: 3072 Wh
+BATTERY_PACK3_CAPACITY_WH=0  # Second expansion battery; B230: 2048 Wh, B300: 3072 Wh
 
 # Read but currently unused (the recheck cycle is not reachable): LOW_POWER_CONSECUTIVE_COUNT,
 # MIN_ON_TIME_SEC, RECHECK_CYCLE_ENABLED, RECHECK_OFF_SEC, RECHECK_QUICK_CHECKS, RECHECK_QUICK_INTERVAL_SEC
@@ -142,6 +145,7 @@ Make sure to replace the placeholders with your actual credentials and settings.
 - A charging supervisor monitors instantaneous power to decide whether charging is active (`power >= CHARGING_W_THRESHOLD`). Once `STABLE_POWER_CHECKS` consecutive readings are below the threshold, the socket is turned off.
 - Charging never starts when the Bluetti battery is at or above `CHARGE_SKIP_ABOVE_PERCENT` (the socket is forced off instead). With `CHARGE_SKIP_WHEN_UNKNOWN=true` an unknown level, or one older than `BATTERY_MAX_AGE_SEC`, also blocks the start; after a restart it waits up to `BATTERY_UNKNOWN_WAIT_SEC` for a fresh reading first. A plug is treated as disconnected after `OFFLINE_CONFIRM_FAILURES` consecutive failed polls or `OFFLINE_CONFIRM_SEC` offline; failed power reads while charging are retried for `MONITOR_READ_FAILURES` / `MONITOR_READ_FAIL_SEC` before falling back to WAIT_POWER.
 - Periodic checks are spaced by `CHECK_INTERVAL_SEC`. Stable power confirmation uses `STABLE_POWER_*`.
+- The dashboard estimates the finish time from the latest AC/DC input power and `BATTERY_CAPACITY_WH` (default: 2048 Wh for AC200M). When a reported expansion pack has a nonzero `BATTERY_PACK2_CAPACITY_WH` or `BATTERY_PACK3_CAPACITY_WH`, its remaining energy is included. Configure each pack as 2048 Wh for a B230 or 3072 Wh for a B300. The estimate does not account for power being drawn from the station while it charges.
 - All state transitions and power checks are logged for observability; failures drop back to the wait state and retry.
 
 ### State machine
