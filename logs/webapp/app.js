@@ -16,6 +16,7 @@ const boilerCardMeta2 = document.getElementById('boilerCardMeta2');
 const acStatus = document.getElementById('acStatus');
 const batteryPercentEl = document.getElementById('batteryPercent');
 const batteryTime = document.getElementById('batteryTime');
+const batteryDrainTime = document.getElementById('batteryDrainTime');
 const batteryExtra = document.getElementById('batteryExtra');
 const powerOffAfterChargeToggle = document.getElementById('powerOffAfterChargeToggle');
 const powerOffBtn = document.getElementById('powerOffBtn');
@@ -361,6 +362,8 @@ function buildPowerSummary(data) {
         acInputTs: summary.acInputTs ?? data?.generated_at ?? null,
         acOutputPower: summary.acOutputPower ?? bluetti.ac_output_power ?? null,
         acOutputPowerTs: summary.acOutputPowerTs ?? data?.generated_at ?? null,
+        dcOutputPower: summary.dcOutputPower ?? bluetti.dc_output_power ?? null,
+        dcOutputPowerTs: summary.dcOutputPowerTs ?? data?.generated_at ?? null,
         lastMessageTs: summary.lastMessageTs ?? data?.connection?.last_message_ts ?? null,
         forcedOfflineTs: summary.forcedOfflineTs ?? null,
         forcedAcOffTs: summary.forcedAcOffTs ?? null,
@@ -379,16 +382,14 @@ function formatChargeDuration(totalMinutes) {
     return `${remainingMinutes}m`;
 }
 
-function renderChargeEstimate(summary) {
+function getRemainingBatteryWh(summary) {
     const hasBatteryPercent = summary.batteryPercent !== null && summary.batteryPercent !== undefined;
     const hasCapacity = summary.batteryCapacityWh !== null && summary.batteryCapacityWh !== undefined;
     const percent = Number(summary.batteryPercent);
     const capacityWh = Number(summary.batteryCapacityWh);
-    const inputWatts = Number(summary.acInputPower ?? 0) + Number(summary.dcInputPower ?? 0);
 
     if (!hasBatteryPercent || !hasCapacity || !Number.isFinite(percent) || !Number.isFinite(capacityWh) || capacityWh <= 0) {
-        batteryTime.textContent = 'Waiting for battery data…';
-        return;
+        return null;
     }
 
     let remainingWh = Math.max(0, capacityWh * (100 - percent) / 100);
@@ -407,6 +408,17 @@ function renderChargeEstimate(summary) {
             remainingWh += Math.max(0, packCapacityWh * (100 - packPercent) / 100);
         }
     });
+    return remainingWh;
+}
+
+function renderChargeEstimate(summary) {
+    const remainingWh = getRemainingBatteryWh(summary);
+    const inputWatts = Number(summary.acInputPower ?? 0) + Number(summary.dcInputPower ?? 0);
+
+    if (remainingWh === null) {
+        batteryTime.textContent = 'Waiting for battery data…';
+        return;
+    }
     if (remainingWh === 0) {
         batteryTime.textContent = 'Fully charged';
         return;
@@ -422,6 +434,24 @@ function renderChargeEstimate(summary) {
     const durationMinutes = (remainingWh / inputWatts) * 60;
     const finishAt = new Date(Date.now() + durationMinutes * 60_000);
     batteryTime.textContent = `Till ${formatTimeOnly(finishAt.toISOString())}`;
+}
+
+function renderDrainEstimate(summary) {
+    const remainingWh = getRemainingBatteryWh(summary);
+    const outputWatts = Number(summary.acOutputPower ?? 0) + Number(summary.dcOutputPower ?? 0);
+
+    if (remainingWh === null || remainingWh === 0) {
+        batteryDrainTime.textContent = '';
+        return;
+    }
+    if (!Number.isFinite(outputWatts) || outputWatts <= 0) {
+        batteryDrainTime.textContent = 'Drain estimate: no active consumption';
+        return;
+    }
+
+    const durationMinutes = (remainingWh / outputWatts) * 60;
+    const emptyAt = new Date(Date.now() + durationMinutes * 60_000);
+    batteryDrainTime.textContent = `Empty by ${formatTimeOnly(emptyAt.toISOString())}`;
 }
 
 function renderPowerSummary(summary) {
@@ -440,6 +470,7 @@ function renderPowerSummary(summary) {
     const pct = summary.batteryPercent;
     batteryPercentEl.textContent = typeof pct === 'number' && !isNaN(pct) ? Math.round(pct) : '—';
     renderChargeEstimate(summary);
+    renderDrainEstimate(summary);
 
     const pack2 = summary.pack2Battery;
     const pack2Voltage = summary.pack2Voltage;

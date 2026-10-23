@@ -60,6 +60,8 @@ class RuntimeStatusStore:
             summary["acInputTs"] = ts
             summary["acOutputPower"] = status.get("ac_output_power")
             summary["acOutputPowerTs"] = ts
+            summary["dcOutputPower"] = status.get("dc_output_power")
+            summary["dcOutputPowerTs"] = ts
 
             connection = self._data.setdefault("connection", {})
             connection["last_message_ts"] = ts
