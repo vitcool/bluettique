@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from services.bluettiMqtt import BluettiMQTTService
 
 CONNECTION_RETRY_ATTEMPTS = 5
@@ -8,10 +9,7 @@ CONNECTION_RETRY_ATTEMPTS = 5
 class BluettiController:
     def __init__(self):
         self.bluetti = BluettiMQTTService()
-        self.turned_on = False
         self.connection_set = False
-        self.ac_turned_on = False
-        self.dc_turned_on = False
 
     async def initialize(self):
         if self.connection_set:
@@ -28,7 +26,6 @@ class BluettiController:
             if await self.bluetti.connect():
                 logging.info("BluettiMQTTService connected.")
                 self.connection_set = True
-                self.turned_on = True
                 return
             logging.info(
                 f"Retrying connection to BluettiMQTTService... (Attempt {attempt + 1})"
@@ -38,16 +35,13 @@ class BluettiController:
             f"Failed to connect to BluettiMQTTService after {CONNECTION_RETRY_ATTEMPTS} attempts."
         )
         self.connection_set = False
-        self.turned_on = False
 
     def turn_dc(self, state: str):
         logging.info(f"Bluetti: Turning DC device {state}")
-        self.dc_turned_on = state == "ON"
         self.bluetti.set_dc_output(state)
 
     def turn_ac(self, state: str):
         logging.info(f"Bluetti: Turning AC device {state}")
-        self.ac_turned_on = state == "ON"
         self.bluetti.set_ac_output(state)
 
     def power_off(self):
@@ -55,15 +49,29 @@ class BluettiController:
         # self.bluetti.power_off() sometimes it works, sometimes it doesn't
         self.stop()
         # self.bluetti.reset_status()
-        self.turned_on = False
         self.connection_set = False
         self.bluetti.status.reset_output_status()
 
+    async def power_off_until_confirmed(self, max_attempts: int, quiet_sec: float) -> bool:
+        """Send the power-off command until telemetry has been silent for quiet_sec; True once confirmed."""
+        poll_sec = min(5.0, quiet_sec)
+        for attempt in range(1, max_attempts + 1):
+            await self.initialize()
+            logging.info(f"Bluetti: Power off command (attempt {attempt}/{max_attempts})")
+            self.bluetti.power_off()
+            deadline = time.monotonic() + quiet_sec * 2
+            while time.monotonic() < deadline:
+                await asyncio.sleep(poll_sec)
+                updated_at = self.bluetti.status.battery_updated_at
+                if updated_at is None or time.monotonic() - updated_at >= quiet_sec:
+                    logging.info("Bluetti: Power off confirmed (no telemetry for %.0fs)", quiet_sec)
+                    self.power_off()
+                    return True
+            logging.warning(f"Bluetti: Still sending telemetry after power off (attempt {attempt}/{max_attempts})")
+        return False
+
     def get_status(self):
-        status = self.bluetti.status.get_status()
-        self.ac_turned_on = status["ac_output_on"]
-        self.dc_turned_on = status["dc_output_on"]
-        return status
+        return self.bluetti.status.get_status()
 
     def stop(self):
         logging.info("Bluetti: Stopping MQTT client and broker")
@@ -71,6 +79,3 @@ class BluettiController:
         self.bluetti.stop_broker()
         self.bluetti.disconnect_device()
         self.connection_set = False
-        self.turned_on = False
-        self.ac_turned_on = False
-        self.dc_turned_on = False

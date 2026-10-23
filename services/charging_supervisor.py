@@ -1,21 +1,6 @@
-import os
 from dataclasses import dataclass
-from typing import List
 
-
-def _int_env(name: str, default: int) -> int:
-    """Parse an int env var with a safe fallback."""
-    try:
-        return int(os.getenv(name, default))
-    except (TypeError, ValueError):
-        return default
-
-
-def _bool_env(name: str, default: bool) -> bool:
-    raw = os.getenv(name)
-    if raw is None:
-        return default
-    return raw.strip().lower() in {"1", "true", "yes", "y", "on"}
+from utils.env import bool_env as _bool_env, int_env as _int_env
 
 
 @dataclass
@@ -32,6 +17,19 @@ class ChargingConfig:
     recheck_off_sec: int
     recheck_quick_checks: int
     recheck_quick_interval_sec: int
+    ac_retry_interval_sec: int
+    ac_retry_max_attempts: int
+    ac_zero_power_off_sec: int
+    offline_confirm_failures: int = 1
+    offline_confirm_sec: int = 120
+    charge_skip_above_percent: int = 98
+    charge_skip_when_unknown: bool = True
+    battery_max_age_sec: int = 600
+    battery_unknown_wait_sec: int = 20
+    monitor_read_failures: int = 3
+    monitor_read_fail_sec: int = 120
+    power_off_max_attempts: int = 5
+    power_off_quiet_sec: int = 60
 
     @classmethod
     def from_env(cls) -> "ChargingConfig":
@@ -48,6 +46,19 @@ class ChargingConfig:
             recheck_off_sec=_int_env("RECHECK_OFF_SEC", 90),
             recheck_quick_checks=_int_env("RECHECK_QUICK_CHECKS", 3),
             recheck_quick_interval_sec=_int_env("RECHECK_QUICK_INTERVAL_SEC", 20),
+            ac_retry_interval_sec=_int_env("AC_RETRY_INTERVAL_SEC", 30),
+            ac_retry_max_attempts=_int_env("AC_RETRY_MAX_ATTEMPTS", 10),
+            ac_zero_power_off_sec=_int_env("AC_ZERO_POWER_OFF_SEC", 300),
+            offline_confirm_failures=_int_env("OFFLINE_CONFIRM_FAILURES", 1),
+            offline_confirm_sec=_int_env("OFFLINE_CONFIRM_SEC", 120),
+            charge_skip_above_percent=_int_env("CHARGE_SKIP_ABOVE_PERCENT", 98),
+            charge_skip_when_unknown=_bool_env("CHARGE_SKIP_WHEN_UNKNOWN", True),
+            battery_max_age_sec=_int_env("BATTERY_MAX_AGE_SEC", 600),
+            battery_unknown_wait_sec=_int_env("BATTERY_UNKNOWN_WAIT_SEC", 20),
+            monitor_read_failures=_int_env("MONITOR_READ_FAILURES", 3),
+            monitor_read_fail_sec=_int_env("MONITOR_READ_FAIL_SEC", 120),
+            power_off_max_attempts=_int_env("POWER_OFF_MAX_ATTEMPTS", 5, min_value=1),
+            power_off_quiet_sec=_int_env("POWER_OFF_QUIET_SEC", 60, min_value=1),
         )
 
 
@@ -63,15 +74,3 @@ class ChargingSupervisor:
             return float(power_w) >= self.config.charging_w_threshold
         except (TypeError, ValueError):
             return False
-
-    def should_stop(self, power_w: float | int | None, low_counter: int, min_on_elapsed: float) -> bool:
-        """Decide whether a sustained low-power period justifies stopping."""
-        return (
-            low_counter >= self.config.low_power_consecutive_count
-            and min_on_elapsed >= self.config.min_on_time_sec
-            and not self.is_charging(power_w)
-        )
-
-    def recheck_confirms_charging(self, power_readings: List[float | int | None]) -> bool:
-        """Return True if any quick recheck reading shows charging."""
-        return any(self.is_charging(reading) for reading in power_readings)
