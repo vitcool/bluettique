@@ -382,6 +382,13 @@ function formatChargeDuration(totalMinutes) {
     return `${remainingMinutes}m`;
 }
 
+function formatDrainDuration(totalMinutes) {
+    const minutes = Math.max(0, Math.ceil(totalMinutes));
+    const hours = Math.floor(minutes / 60);
+    const remainingMinutes = String(minutes % 60).padStart(2, '0');
+    return `${hours}:${remainingMinutes}m`;
+}
+
 function getRemainingBatteryWh(summary) {
     const hasBatteryPercent = summary.batteryPercent !== null && summary.batteryPercent !== undefined;
     const hasCapacity = summary.batteryCapacityWh !== null && summary.batteryCapacityWh !== undefined;
@@ -427,7 +434,7 @@ function renderChargeEstimate(summary) {
         const scenarios = [450, 650, 900]
             .map(watts => `${watts} W: ${formatChargeDuration((remainingWh / watts) * 60)}`)
             .join(' • ');
-        batteryTime.textContent = scenarios;
+        batteryTime.textContent = `Estimated time to charge: ${scenarios}`;
         return;
     }
 
@@ -451,7 +458,7 @@ function renderDrainEstimate(summary) {
 
     const durationMinutes = (remainingWh / outputWatts) * 60;
     const emptyAt = new Date(Date.now() + durationMinutes * 60_000);
-    batteryDrainTime.textContent = `Empty by ${formatTimeOnly(emptyAt.toISOString())}`;
+    batteryDrainTime.textContent = `Empty by ${formatTimeOnly(emptyAt.toISOString())} • ${formatDrainDuration(durationMinutes)}`;
 }
 
 function renderPowerSummary(summary) {
