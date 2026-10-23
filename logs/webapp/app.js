@@ -396,7 +396,6 @@ function renderChargeEstimate(summary) {
         { percent: summary.pack2Battery, voltage: summary.pack2Voltage, capacityWh: summary.pack2CapacityWh },
         { percent: summary.pack3Battery, voltage: summary.pack3Voltage, capacityWh: summary.pack3CapacityWh }
     ];
-    let includedPackCount = 0;
     packs.forEach(pack => {
         const hasPackPercent = pack.percent !== null && pack.percent !== undefined;
         const packPercent = Number(pack.percent);
@@ -406,7 +405,6 @@ function renderChargeEstimate(summary) {
             (!Number.isFinite(packVoltage) || packVoltage > 1);
         if (isConnected && Number.isFinite(packCapacityWh) && packCapacityWh > 0) {
             remainingWh += Math.max(0, packCapacityWh * (100 - packPercent) / 100);
-            includedPackCount += 1;
         }
     });
     if (remainingWh === 0) {
@@ -414,14 +412,16 @@ function renderChargeEstimate(summary) {
         return;
     }
     if (!Number.isFinite(inputWatts) || inputWatts <= 0) {
-        batteryTime.textContent = `${Math.round(remainingWh)} Wh remaining`;
+        const scenarios = [450, 650, 900]
+            .map(watts => `${watts} W: ${formatChargeDuration((remainingWh / watts) * 60)}`)
+            .join(' • ');
+        batteryTime.textContent = scenarios;
         return;
     }
 
     const durationMinutes = (remainingWh / inputWatts) * 60;
     const finishAt = new Date(Date.now() + durationMinutes * 60_000);
-    const packNote = includedPackCount ? ` • ${includedPackCount} expansion pack${includedPackCount === 1 ? '' : 's'}` : '';
-    batteryTime.textContent = `~${formatChargeDuration(durationMinutes)} to full (${Math.round(remainingWh)} Wh left) • ${formatTimeOnly(finishAt.toISOString())}${packNote}`;
+    batteryTime.textContent = `Till ${formatTimeOnly(finishAt.toISOString())}`;
 }
 
 function renderPowerSummary(summary) {
@@ -479,6 +479,8 @@ function renderPowerSummary(summary) {
         connStatus.textContent = online ? 'ONLINE' : 'OFFLINE';
         connStatus.classList.toggle('on', online);
         connStatus.classList.toggle('off', !online);
+        powerOffBtn.classList.toggle('hidden', !online);
+        powerOffMessage.classList.toggle('hidden', !online);
 
         if (forcedOfflineRecent) {
             connDetail.textContent = `Last activity ${formatWithRelative(lastActivityTs)} (broker stopped)`;
@@ -490,6 +492,8 @@ function renderPowerSummary(summary) {
     } else {
         connStatus.textContent = '—';
         connDetail.textContent = 'Waiting for data…';
+        powerOffBtn.classList.add('hidden');
+        powerOffMessage.classList.add('hidden');
     }
 }
 
