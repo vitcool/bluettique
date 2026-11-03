@@ -31,10 +31,16 @@ class BluettiController:
                 f"Retrying connection to BluettiMQTTService... (Attempt {attempt + 1})"
             )
             await asyncio.sleep(10)
-        logging.info(
-            f"Failed to connect to BluettiMQTTService after {CONNECTION_RETRY_ATTEMPTS} attempts."
+        logging.error(
+            "Failed to connect to BluettiMQTTService after %s attempts; "
+            "exiting so Docker can restart the container.",
+            CONNECTION_RETRY_ATTEMPTS,
         )
         self.connection_set = False
+        # docker-compose.yaml uses restart: unless-stopped. Let the failure
+        # escape callers that handle ordinary connection errors so the process
+        # exits and Docker can restart the container.
+        raise SystemExit(1)
 
     def turn_dc(self, state: str):
         logging.info(f"Bluetti: Turning DC device {state}")
