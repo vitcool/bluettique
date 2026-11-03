@@ -37,10 +37,22 @@ class WaitPowerState(ChargingState):
             handler.first_launch = False
             if is_online:
                 if await handler.skip_start_if_battery_blocks():
+                    if not handler.bluetti_controller.connection_set:
+                        handler.bluetti_waiting_for_connection = True
                     await asyncio.sleep(handler.config.check_interval_sec)
                     return
                 handler.set_state(StartChargingState(), "First launch with TAPO online")
                 return
+
+        if handler.bluetti_waiting_for_connection and is_online and handler.bluetti_controller.connection_set:
+            if await handler.skip_start_if_battery_blocks():
+                await asyncio.sleep(handler.config.check_interval_sec)
+                return
+            handler.bluetti_waiting_for_connection = False
+            handler.offline_seen_in_wait = False
+            handler.reset_offline_tracking()
+            handler.set_state(StartChargingState(), "Bluetti connection restored")
+            return
 
         if not is_online:
             if not handler.offline_seen_in_wait:
@@ -62,7 +74,16 @@ class WaitPowerState(ChargingState):
             return
 
         if handler.offline_seen_in_wait:
+            if (
+                handler.bluetti_waiting_for_connection
+                and not handler.bluetti_controller.connection_set
+            ):
+                # Tapo returning online is an explicit power-recovery signal;
+                # bypass the persisted Bluetti retry delay and try immediately.
+                await handler.bluetti_controller.initialize(force=True)
             if await handler.skip_start_if_battery_blocks():
+                if not handler.bluetti_controller.connection_set:
+                    handler.bluetti_waiting_for_connection = True
                 handler.offline_seen_in_wait = False
                 handler.reset_offline_tracking()
                 await asyncio.sleep(handler.config.check_interval_sec)
@@ -78,23 +99,24 @@ class WaitPowerState(ChargingState):
 
 class StartChargingState(ChargingState):
     async def handle(self, handler: "ChargingStateHandler"):
-        logging.info("Charging: START_CHARGING - turning socket on")
+        logging.info("Charging: START_CHARGING - checking Bluetti before turning socket on")
         try:
+            if not await handler.bluetti_controller.initialize():
+                logging.info("Charging: Bluetti unavailable; leaving socket off and waiting")
+                try:
+                    await handler.tapo_controller.stop_charging()
+                except Exception:
+                    logging.warning("Charging: Failed to keep socket off while Bluetti is unavailable", exc_info=True)
+                handler.bluetti_waiting_for_connection = True
+                handler.set_state(WaitPowerState(), "Bluetti unavailable; waiting for retry")
+                await asyncio.sleep(handler.config.check_interval_sec)
+                return
             await handler.tapo_controller.start_charging()
-            await handler.bluetti_controller.initialize()
             handler.bluetti_controller.turn_ac("OFF")
             handler.socket_on_at = time.monotonic()
             handler.first_power_check_at = handler.socket_on_at + handler.config.first_power_check_delay_sec
             handler.stable_checks_remaining = handler.config.stable_power_checks
             handler.set_state(MonitorChargingState(), "Socket turned on")
-        except SystemExit:
-            # Connection recovery exhausted after enabling the socket. Do not
-            # leave it energized while Docker restarts the app.
-            try:
-                await handler.tapo_controller.stop_charging()
-            except Exception:
-                logging.warning("Charging: Failed to turn socket off before restart", exc_info=True)
-            raise
         except Exception:
             logging.warning("Charging: Failed to start charging, returning to WAIT_POWER", exc_info=True)
             handler.set_state(WaitPowerState(), "Start failed")
@@ -229,6 +251,7 @@ class ChargingStateHandler:
         self.battery_guard = BatteryGuard(self.config, bluetti_controller, tapo_controller)
         self.monitor_streak = FailureStreak(self.config.monitor_read_failures, self.config.monitor_read_fail_sec)
         self.first_launch = True
+        self.bluetti_waiting_for_connection = False
         self.ac_recovery = AcRecoveryTask(
             self.config,
             bluetti_controller,
@@ -310,7 +333,11 @@ class ChargingStateHandler:
         self.ac_keep_alive_sent = True
         logging.info("Charging: TAPO unreachable; triggering Bluetti AC keep-alive")
         try:
-            await self.bluetti_controller.initialize()
+            if not await self.bluetti_controller.initialize():
+                logging.info("Charging: Bluetti unavailable; skipping AC keep-alive command")
+                self.bluetti_waiting_for_connection = True
+                self.ac_keep_alive_sent = False
+                return
             status = self.bluetti_controller.get_status()
             if self.ac_recovery.has_input_power(status):
                 logging.info(

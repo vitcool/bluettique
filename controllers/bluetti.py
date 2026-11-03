@@ -1,6 +1,10 @@
 import asyncio
+import json
 import logging
+import os
 import time
+from datetime import datetime, timezone
+from pathlib import Path
 from services.bluettiMqtt import BluettiMQTTService
 from utils.env import int_env
 
@@ -16,13 +20,81 @@ class BluettiController:
         self.watchdog_interval_sec = int_env(
             "BLUETTI_WATCHDOG_INTERVAL_SEC", 15, min_value=1
         )
+        self.unavailable_retry_sec = int_env(
+            "BLUETTI_UNAVAILABLE_RETRY_SEC", 300, min_value=1
+        )
         self._initialize_lock = asyncio.Lock()
+        self.connection_state_path = Path(
+            os.getenv("BLUETTI_CONNECTION_STATE_FILE", "logs/bluetti_connection_state.json")
+        )
+        self._connection_retry_after = 0.0
+        self._connection_blocked = self._load_connection_blocked()
 
-    async def initialize(self):
+    def _load_connection_blocked(self) -> bool:
+        try:
+            state = json.loads(self.connection_state_path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return False
+        except (OSError, json.JSONDecodeError) as exc:
+            logging.warning(
+                "Could not read Bluetti connection state file %s: %s",
+                self.connection_state_path,
+                exc,
+            )
+            return False
+        blocked = bool(state.get("blocked")) if isinstance(state, dict) else False
+        if blocked:
+            try:
+                self._connection_retry_after = float(state.get("retry_after", 0))
+            except (TypeError, ValueError):
+                self._connection_retry_after = 0.0
+            if self._connection_retry_after <= 0:
+                self._connection_retry_after = time.time() + self.unavailable_retry_sec
+            logging.warning(
+                "Bluetti connection retry is paused by saved state in %s until %s.",
+                self.connection_state_path,
+                datetime.fromtimestamp(self._connection_retry_after, timezone.utc).isoformat(),
+            )
+        return blocked
+
+    def _save_connection_blocked(self, blocked: bool) -> None:
+        self._connection_blocked = blocked
+        try:
+            if not blocked:
+                self._connection_retry_after = 0.0
+                self.connection_state_path.unlink(missing_ok=True)
+                return
+            self._connection_retry_after = time.time() + self.unavailable_retry_sec
+            self.connection_state_path.parent.mkdir(parents=True, exist_ok=True)
+            state = {
+                "blocked": True,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+                "retry_after": self._connection_retry_after,
+                "reason": "Bluetti connection attempts exhausted",
+            }
+            temp_path = self.connection_state_path.with_suffix(
+                self.connection_state_path.suffix + ".tmp"
+            )
+            temp_path.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
+            temp_path.replace(self.connection_state_path)
+        except OSError:
+            logging.exception("Could not persist Bluetti connection state to %s", self.connection_state_path)
+
+    async def initialize(self, force: bool = False):
         async with self._initialize_lock:
-            await self._initialize_locked()
+            return await self._initialize_locked(force=force)
 
-    async def _initialize_locked(self):
+    async def _initialize_locked(self, force: bool = False):
+        if self._connection_blocked:
+            if time.time() < self._connection_retry_after and not force:
+                logging.info("Bluetti connection is paused until its next scheduled retry.")
+                return False
+            if force and time.time() < self._connection_retry_after:
+                logging.info("Forcing Bluetti reconnect after external power recovery signal.")
+            else:
+                logging.info("Bluetti retry interval elapsed; trying to connect again.")
+            self._connection_blocked = False
+
         if self.connection_set:
             battery_updated_at = self.bluetti.status.battery_updated_at
             telemetry_fresh = (
@@ -32,7 +104,7 @@ class BluettiController:
             broker_running = self.bluetti.is_broker_running()
             if self.bluetti.device_connected and telemetry_fresh and broker_running:
                 logging.info("BluettiController already connected; skipping initialize.")
-                return
+                return True
             if self.bluetti.device_connected or not broker_running:
                 logging.warning(
                     "Bluetti connection is unhealthy (broker_running=%s, device_connected=%s, "
@@ -54,7 +126,8 @@ class BluettiController:
                 logging.info("BluettiMQTTService connected.")
                 self.connection_set = True
                 self._watchdog_enabled = True
-                return
+                self._save_connection_blocked(False)
+                return True
             if attempt < self.connection_retry_attempts:
                 logging.info(
                     "Retrying connection to BluettiMQTTService... (Attempt %s)",
@@ -72,22 +145,26 @@ class BluettiController:
             logging.info("BluettiMQTTService connected after Bluetooth adapter reset.")
             self.connection_set = True
             self._watchdog_enabled = True
-            return
+            self._save_connection_blocked(False)
+            return True
 
         logging.error(
-            "Failed to connect to BluettiMQTTService after retries and adapter reset; "
-            "exiting so Docker can restart the container.",
+            "Bluetti connection failed after retries and adapter reset; "
+            "pausing until the next scheduled retry."
         )
         self.connection_set = False
-        # docker-compose.yaml uses restart: unless-stopped. Let the failure
-        # escape callers that handle ordinary connection errors so the process
-        # exits and Docker can restart the container.
-        raise SystemExit(1)
+        self._watchdog_enabled = False
+        self._save_connection_blocked(True)
+        return False
 
     async def monitor_connection(self):
-        """Recover the broker/BLE link if it dies after the initial connection."""
+        """Retry unavailable Bluetti connections and recover links that later drop."""
         while True:
             await asyncio.sleep(self.watchdog_interval_sec)
+            if self._connection_blocked:
+                if time.time() >= self._connection_retry_after:
+                    await self.initialize()
+                continue
             if not self._watchdog_enabled:
                 continue
 
@@ -107,12 +184,7 @@ class BluettiController:
                 self.bluetti.device_connected,
                 telemetry_fresh,
             )
-            try:
-                await self.initialize()
-            except SystemExit:
-                # Keep the app alive and retry on the next watchdog pass. The
-                # initialize path has already exhausted pairing and adapter reset.
-                logging.error("Bluetti watchdog reconnect failed; will retry.")
+            await self.initialize()
 
     def turn_dc(self, state: str):
         logging.info(f"Bluetti: Turning DC device {state}")
@@ -135,7 +207,9 @@ class BluettiController:
         """Send the power-off command until telemetry has been silent for quiet_sec; True once confirmed."""
         poll_sec = min(5.0, quiet_sec)
         for attempt in range(1, max_attempts + 1):
-            await self.initialize()
+            if not await self.initialize():
+                logging.warning("Bluetti is unavailable; cannot send power-off command.")
+                return False
             logging.info(f"Bluetti: Power off command (attempt {attempt}/{max_attempts})")
             self.bluetti.power_off()
             deadline = time.monotonic() + quiet_sec * 2
