@@ -20,9 +20,19 @@ class AcRecoveryTask:
         self.zero_duration = 0.0
         self.retry_attempts = 0
         self.retry_limit_logged = False
-        self.retry_suppressed_after_zero_off = False
+        self.retry_suppressed_for_cycle = False
         self.retry_suppressed_logged = False
         self.last_retry_at = 0.0
+
+    @staticmethod
+    def has_input_power(status) -> bool:
+        for field in ("ac_input_power", "dc_input_power"):
+            try:
+                if float(status.get(field) or 0) > 0.0:
+                    return True
+            except (TypeError, ValueError):
+                continue
+        return False
 
     def is_running(self) -> bool:
         return self.task is not None and not self.task.done()
@@ -44,7 +54,9 @@ class AcRecoveryTask:
             while True:
                 await asyncio.sleep(poll_interval)
                 status = self.bluetti_controller.get_status()
-                if not status.get("ac_output_on"):
+                if self.has_input_power(status):
+                    self._handle_input_power(status)
+                elif not status.get("ac_output_on"):
                     await self._handle_ac_off()
                 else:
                     self._handle_ac_on(status.get("ac_output_power"), poll_interval)
@@ -56,7 +68,7 @@ class AcRecoveryTask:
     async def _handle_ac_off(self):
         max_retries = int(self.config.ac_retry_max_attempts)
         retry_interval = max(float(self.config.ac_retry_interval_sec), 0.1)
-        should_retry = self.retries_wanted() and not self.retry_suppressed_after_zero_off
+        should_retry = self.retries_wanted() and not self.retry_suppressed_for_cycle
         retries_allowed = max_retries <= 0 or self.retry_attempts < max_retries
         now = time.monotonic()
 
@@ -82,13 +94,27 @@ class AcRecoveryTask:
             )
             self.retry_limit_logged = True
 
-        if self.retry_suppressed_after_zero_off and not self.retry_suppressed_logged:
+        if self.retry_suppressed_for_cycle and not self.retry_suppressed_logged:
             logging.info(
-                "Charging: AC retries suppressed after zero-power auto-off; waiting for next cycle",
+                "Charging: AC retries suppressed after recovery shutoff; waiting for next cycle",
             )
             self.retry_suppressed_logged = True
 
         self.zero_duration = 0.0
+
+    def _handle_input_power(self, status):
+        self.retry_suppressed_for_cycle = True
+        self.retry_attempts = 0
+        self.retry_limit_logged = False
+        self.zero_duration = 0.0
+        self.retry_suppressed_logged = False
+        if status.get("ac_output_on"):
+            logging.info(
+                "Charging: Bluetti input power detected (AC=%sW, DC=%sW); turning AC output off",
+                status.get("ac_input_power", 0),
+                status.get("dc_input_power", 0),
+            )
+            self.bluetti_controller.turn_ac("OFF")
 
     def _handle_ac_on(self, ac_power, poll_interval):
         if self.retry_attempts:
@@ -105,7 +131,7 @@ class AcRecoveryTask:
             power_val = 0.0
 
         if power_val > 0.0:
-            self.retry_suppressed_after_zero_off = False
+            self.retry_suppressed_for_cycle = False
             self.retry_suppressed_logged = False
             self.zero_duration = 0.0
             return
@@ -117,7 +143,7 @@ class AcRecoveryTask:
                 self.zero_duration,
             )
             self.bluetti_controller.turn_ac("OFF")
-            self.retry_suppressed_after_zero_off = True
+            self.retry_suppressed_for_cycle = True
             self.retry_suppressed_logged = False
             self.retry_attempts = 0
             self.retry_limit_logged = False

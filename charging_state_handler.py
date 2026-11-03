@@ -311,6 +311,16 @@ class ChargingStateHandler:
         logging.info("Charging: TAPO unreachable; triggering Bluetti AC keep-alive")
         try:
             await self.bluetti_controller.initialize()
+            status = self.bluetti_controller.get_status()
+            if self.ac_recovery.has_input_power(status):
+                logging.info(
+                    "Charging: Bluetti input power detected (AC=%sW, DC=%sW); keeping AC output off",
+                    status.get("ac_input_power", 0),
+                    status.get("dc_input_power", 0),
+                )
+                self.bluetti_controller.turn_ac("OFF")
+                self.ac_keep_alive_sent = False
+                return
             self.bluetti_controller.turn_ac("ON")
         except Exception:
             logging.warning("Charging: Failed to trigger Bluetti AC keep-alive", exc_info=True)

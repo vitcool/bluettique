@@ -39,11 +39,15 @@ async def main(tapo_controller, bluetti_controller):
     _start_web_server(bluetti_controller)
 
     boiler_task = None
+    bluetti_watchdog_task = asyncio.create_task(
+        bluetti_controller.monitor_connection(), name="bluetti-connection-watchdog"
+    )
 
     def handle_stop_signal(signum, frame):
         logging.info("Stop signal received, performing cleanup...")
         if boiler_task:
             boiler_task.cancel()
+        bluetti_watchdog_task.cancel()
         bluetti_controller.stop()
         logging.info("Cleanup complete, exiting.")
         exit(0)

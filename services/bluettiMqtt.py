@@ -292,6 +292,11 @@ class BluettiMQTTService:
         else:
             logging.debug("No broker process found to stop.")
 
+    def is_broker_running(self) -> bool:
+        """Return whether the managed bluetti-mqtt subprocess is still alive."""
+        process = getattr(self, "broker_process", None)
+        return process is not None and process.poll() is None
+
     def disconnect_device(self):
         """Ask BlueZ to drop the BLE connection so the adapter is freed."""
         if not self.mac_address:
