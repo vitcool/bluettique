@@ -50,7 +50,16 @@ class BatteryGuard:
 
     async def skip_start_if_battery_blocks(self) -> bool:
         """True (and socket forced off) when charging must not start: battery full, or level unknown."""
-        percent = await self._wait_for_battery_percent()
+        try:
+            percent = await self._wait_for_battery_percent()
+        except SystemExit:
+            # The connection retries and adapter reset failed. Leave the AC
+            # socket off before allowing Docker's restart policy to run.
+            try:
+                await self.tapo_controller.stop_charging()
+            except Exception:
+                logging.warning("Charging: Failed to turn socket off before restart", exc_info=True)
+            raise
         limit = self.config.charge_skip_above_percent
         if percent is None:
             if not self.config.charge_skip_when_unknown:

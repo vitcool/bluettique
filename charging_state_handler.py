@@ -87,6 +87,14 @@ class StartChargingState(ChargingState):
             handler.first_power_check_at = handler.socket_on_at + handler.config.first_power_check_delay_sec
             handler.stable_checks_remaining = handler.config.stable_power_checks
             handler.set_state(MonitorChargingState(), "Socket turned on")
+        except SystemExit:
+            # Connection recovery exhausted after enabling the socket. Do not
+            # leave it energized while Docker restarts the app.
+            try:
+                await handler.tapo_controller.stop_charging()
+            except Exception:
+                logging.warning("Charging: Failed to turn socket off before restart", exc_info=True)
+            raise
         except Exception:
             logging.warning("Charging: Failed to start charging, returning to WAIT_POWER", exc_info=True)
             handler.set_state(WaitPowerState(), "Start failed")

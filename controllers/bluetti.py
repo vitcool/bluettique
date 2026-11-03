@@ -2,39 +2,66 @@ import asyncio
 import logging
 import time
 from services.bluettiMqtt import BluettiMQTTService
-
-CONNECTION_RETRY_ATTEMPTS = 5
-
+from utils.env import int_env
 
 class BluettiController:
     def __init__(self):
         self.bluetti = BluettiMQTTService()
         self.connection_set = False
+        self.connection_retry_attempts = int_env(
+            "BLUETTI_CONNECTION_RETRY_ATTEMPTS", 2, min_value=1
+        )
+        self.telemetry_stale_sec = int_env("CONNECTION_WINDOW_MIN", 5, min_value=1) * 60
 
     async def initialize(self):
         if self.connection_set:
-            if self.bluetti.device_connected:
+            battery_updated_at = self.bluetti.status.battery_updated_at
+            telemetry_fresh = (
+                battery_updated_at is not None
+                and time.monotonic() - battery_updated_at <= self.telemetry_stale_sec
+            )
+            if self.bluetti.device_connected and telemetry_fresh:
                 logging.info("BluettiController already connected; skipping initialize.")
                 return
-            logging.info(
-                "BluettiController flagged connected but device is not; attempting reconnection."
-            )
+            if self.bluetti.device_connected:
+                logging.warning(
+                    "BluettiController connection flag is set but battery telemetry is missing or "
+                    "stale; resetting the connection and reconnecting."
+                )
+                self.bluetti.reset_connection()
+            else:
+                logging.info(
+                    "BluettiController flagged connected but device is not; attempting reconnection."
+                )
             self.connection_set = False
 
         logging.info("BluettiController initializing.")
-        for attempt in range(CONNECTION_RETRY_ATTEMPTS):
+        for attempt in range(1, self.connection_retry_attempts + 1):
             if await self.bluetti.connect():
                 logging.info("BluettiMQTTService connected.")
                 self.connection_set = True
                 return
-            logging.info(
-                f"Retrying connection to BluettiMQTTService... (Attempt {attempt + 1})"
-            )
-            await asyncio.sleep(10)
+            if attempt < self.connection_retry_attempts:
+                logging.info(
+                    "Retrying connection to BluettiMQTTService... (Attempt %s)",
+                    attempt + 1,
+                )
+                await asyncio.sleep(10)
+
+        logging.warning(
+            "Bluetti pairing failed after %s controller attempts; resetting the Bluetooth adapter.",
+            self.connection_retry_attempts,
+        )
+        await self.bluetti.reset_bluetooth_adapter()
+        logging.info("Retrying Bluetti pairing after the Bluetooth adapter reset.")
+        if await self.bluetti.connect():
+            logging.info("BluettiMQTTService connected after Bluetooth adapter reset.")
+            self.connection_set = True
+            return
+
         logging.error(
-            "Failed to connect to BluettiMQTTService after %s attempts; "
+            "Failed to connect to BluettiMQTTService after retries and adapter reset; "
             "exiting so Docker can restart the container.",
-            CONNECTION_RETRY_ATTEMPTS,
         )
         self.connection_set = False
         # docker-compose.yaml uses restart: unless-stopped. Let the failure

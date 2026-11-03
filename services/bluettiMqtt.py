@@ -17,8 +17,8 @@ class BluettiMQTTService:
         self.mac_address = os.getenv("BLUETTI_MAC_ADDRESS")
         self.device_name = os.getenv("BLUETTI_DEVICE_NAME")
         self.broker_interval = os.getenv("BLUETTI_BROKER_INTERVAL", "30")
-        self.broker_connection_timeout = max(
-            int_env("BLUETTI_BROKER_CONNECTION_TIMEOUT", 90), 90
+        self.broker_connection_timeout = int_env(
+            "BLUETTI_BROKER_CONNECTION_TIMEOUT", 30, min_value=10
         )
         # Retries for pairing the first time; keeps runs resilient to flaky BT.
         self.connect_retries = int_env("BLUETTI_BROKER_RETRIES", 3, min_value=1)
@@ -79,6 +79,53 @@ class BluettiMQTTService:
             f"All {self.connect_retries} Bluetti connection attempts failed; giving up."
         )
         return False
+
+    async def reset_bluetooth_adapter(self) -> bool:
+        """Disconnect Bluetti and power-cycle the host's default BlueZ adapter."""
+        self.reset_connection()
+
+        if not shutil.which("bluetoothctl"):
+            logging.error("Cannot reset Bluetooth adapter: bluetoothctl is unavailable.")
+            return False
+
+        async def run_bluetoothctl(*args: str) -> bool:
+            try:
+                process = await asyncio.create_subprocess_exec(
+                    "bluetoothctl",
+                    *args,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=10)
+            except (OSError, asyncio.TimeoutError) as exc:
+                logging.warning("bluetoothctl %s failed: %s", " ".join(args), exc)
+                return False
+
+            output = (stdout or stderr).decode(errors="replace").strip()
+            if process.returncode != 0:
+                logging.warning(
+                    "bluetoothctl %s returned %s: %s",
+                    " ".join(args),
+                    process.returncode,
+                    output,
+                )
+                return False
+            logging.info("bluetoothctl %s: %s", " ".join(args), output or "OK")
+            return True
+
+        logging.warning("Resetting the host Bluetooth adapter after Bluetti pairing failures.")
+        powered_off = await run_bluetoothctl("power", "off")
+        await asyncio.sleep(2)
+        powered_on = await run_bluetoothctl("power", "on")
+        await asyncio.sleep(3)
+        return powered_off and powered_on
+
+    def reset_connection(self) -> None:
+        """Stop the MQTT bridge and drop the current BLE link before reconnecting."""
+        self.stop_client()
+        self.stop_broker()
+        self.device_connected = False
+        self.disconnect_device()
 
     async def _wait_for_pairing(self):
         while not self.device_connected:
