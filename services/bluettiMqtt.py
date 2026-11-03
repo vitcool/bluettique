@@ -1,11 +1,14 @@
 import asyncio
+import json
 import os
 import subprocess
 import logging
 import shutil
 import threading
 from models.bluetti import BluettiStatus
+from utils.env import int_env
 import paho.mqtt.client as mqtt
+from services.runtime_status import runtime_status_store
 
 
 class BluettiMQTTService:
@@ -15,11 +18,11 @@ class BluettiMQTTService:
         self.device_name = os.getenv("BLUETTI_DEVICE_NAME")
         self.broker_interval = os.getenv("BLUETTI_BROKER_INTERVAL", "30")
         self.broker_connection_timeout = max(
-            int(os.getenv("BLUETTI_BROKER_CONNECTION_TIMEOUT", "90")), 90
+            int_env("BLUETTI_BROKER_CONNECTION_TIMEOUT", 90), 90
         )
         # Retries for pairing the first time; keeps runs resilient to flaky BT.
-        self.connect_retries = max(int(os.getenv("BLUETTI_BROKER_RETRIES", "3")), 1)
-        self.connect_retry_delay = max(int(os.getenv("BLUETTI_BROKER_RETRY_DELAY", "5")), 1)
+        self.connect_retries = int_env("BLUETTI_BROKER_RETRIES", 3, min_value=1)
+        self.connect_retry_delay = int_env("BLUETTI_BROKER_RETRY_DELAY", 5, min_value=1)
         self.broker_adapter = os.getenv("BLUETTI_BROKER_ADAPTER")
         self.client = mqtt.Client()
 
@@ -116,11 +119,53 @@ class BluettiMQTTService:
             "dc_input_power": ("dc_input_power", float),
         }
 
+        for key in ("pack_details2", "pack_details3"):
+            if key in topic:
+                pack = self._extract_pack_details(payload)
+                self.status.update_status(f"{key}_percent", pack["percent"])
+                self.status.update_status(f"{key}_voltage", pack["voltage"])
+                self._publish_runtime_status()
+                return
+
         for key, (attr, transform) in topic_map.items():
             if key in topic:
                 value = transform(payload)
                 self.status.update_status(attr, value)
+                self._publish_runtime_status()
                 break
+
+    def _publish_runtime_status(self):
+        try:
+            runtime_status_store.update_bluetti(self.status.get_status())
+        except Exception:
+            logging.debug("Runtime status update failed", exc_info=True)
+
+    @staticmethod
+    def _extract_pack_details(payload: str) -> dict[str, float | None]:
+        """Extract additional battery pack details from JSON or plain numeric payload."""
+        try:
+            parsed = json.loads(payload)
+        except Exception:
+            parsed = payload
+
+        if isinstance(parsed, dict):
+            percent = parsed.get("percent")
+            voltage = parsed.get("voltage")
+        else:
+            percent = parsed
+            voltage = None
+
+        try:
+            percent_value = float(percent) if percent is not None else None
+        except (TypeError, ValueError):
+            percent_value = None
+
+        try:
+            voltage_value = float(voltage) if voltage is not None else None
+        except (TypeError, ValueError):
+            voltage_value = None
+
+        return {"percent": percent_value, "voltage": voltage_value}
 
     def start_client(self):
         self.client.loop_start()
@@ -243,7 +288,6 @@ class BluettiMQTTService:
             if not topic:
                 return
             self.client.publish(topic, state)
-            self.ac_output_on = state == "ON"
         else:
             logging.debug("Invalid state for AC output")
 
