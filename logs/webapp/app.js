@@ -399,7 +399,7 @@ function getRemainingBatteryWh(summary) {
         return null;
     }
 
-    let remainingWh = Math.max(0, capacityWh * (100 - percent) / 100);
+    let remainingWh = Math.max(0, capacityWh * percent / 100);
     const packs = [
         { percent: summary.pack2Battery, voltage: summary.pack2Voltage, capacityWh: summary.pack2CapacityWh },
         { percent: summary.pack3Battery, voltage: summary.pack3Voltage, capacityWh: summary.pack3CapacityWh }
@@ -412,7 +412,7 @@ function getRemainingBatteryWh(summary) {
         const isConnected = hasPackPercent && Number.isFinite(packPercent) && packPercent >= 0 &&
             (!Number.isFinite(packVoltage) || packVoltage > 1);
         if (isConnected && Number.isFinite(packCapacityWh) && packCapacityWh > 0) {
-            remainingWh += Math.max(0, packCapacityWh * (100 - packPercent) / 100);
+            remainingWh += Math.max(0, packCapacityWh * packPercent / 100);
         }
     });
     return remainingWh;
