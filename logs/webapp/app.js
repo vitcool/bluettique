@@ -421,27 +421,51 @@ function getRemainingBatteryWh(summary) {
     return remainingWh;
 }
 
-function renderChargeEstimate(summary) {
+function getBatteryChargeNeededWh(summary) {
     const remainingWh = getRemainingBatteryWh(summary);
+    const capacityWh = Number(summary.batteryCapacityWh);
+    if (remainingWh === null || !Number.isFinite(capacityWh) || capacityWh <= 0) {
+        return null;
+    }
+
+    let totalCapacityWh = capacityWh;
+    [
+        { percent: summary.pack2Battery, voltage: summary.pack2Voltage, capacityWh: summary.pack2CapacityWh },
+        { percent: summary.pack3Battery, voltage: summary.pack3Voltage, capacityWh: summary.pack3CapacityWh }
+    ].forEach(pack => {
+        const packPercent = Number(pack.percent);
+        const packVoltage = Number(pack.voltage);
+        const packCapacityWh = Number(pack.capacityWh);
+        const isConnected = pack.percent !== null && pack.percent !== undefined && Number.isFinite(packPercent) &&
+            packPercent >= 0 && (!Number.isFinite(packVoltage) || packVoltage > 1);
+        if (isConnected && Number.isFinite(packCapacityWh) && packCapacityWh > 0) {
+            totalCapacityWh += packCapacityWh;
+        }
+    });
+    return Math.max(0, totalCapacityWh - remainingWh);
+}
+
+function renderChargeEstimate(summary) {
+    const chargeNeededWh = getBatteryChargeNeededWh(summary);
     const inputWatts = Number(summary.acInputPower ?? 0) + Number(summary.dcInputPower ?? 0);
 
-    if (remainingWh === null) {
+    if (chargeNeededWh === null) {
         batteryTime.textContent = 'Waiting for battery data…';
         return;
     }
-    if (remainingWh === 0) {
+    if (chargeNeededWh === 0) {
         batteryTime.textContent = 'Fully charged';
         return;
     }
     if (!Number.isFinite(inputWatts) || inputWatts <= 0) {
         const scenarios = [450, 650, 900]
-            .map(watts => `${watts} W: ${formatChargeDuration((remainingWh / watts) * 60)}`)
+            .map(watts => `${watts} W: ${formatChargeDuration((chargeNeededWh / watts) * 60)}`)
             .join(' • ');
         batteryTime.textContent = `Estimated time to charge: ${scenarios}`;
         return;
     }
 
-    const durationMinutes = (remainingWh / inputWatts) * 60;
+    const durationMinutes = (chargeNeededWh / inputWatts) * 60;
     const finishAt = new Date(Date.now() + durationMinutes * 60_000);
     batteryTime.textContent = `Till ${formatTimeOnly(finishAt.toISOString())}`;
 }
