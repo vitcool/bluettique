@@ -533,9 +533,9 @@ function renderPowerSummary(summary) {
     inputDetail.textContent = parts.length ? parts.join(' • ') : 'Waiting for data…';
 
     const tapoVoltage = Number(summary.tapoVoltage);
-    if (summary.tapoVoltage !== null && summary.tapoVoltage !== undefined && Number.isFinite(tapoVoltage) && tapoVoltage > 0) {
+    if (inputOn && summary.tapoVoltage !== null && summary.tapoVoltage !== undefined && Number.isFinite(tapoVoltage) && tapoVoltage > 0) {
         tapoVoltageDetail.textContent = `Tapo socket: ${tapoVoltage.toFixed(1)} V`;
-    } else if (summary.tapoVoltageTs) {
+    } else if (inputOn && summary.tapoVoltageTs) {
         tapoVoltageDetail.textContent = 'Tapo socket voltage unavailable';
     } else {
         tapoVoltageDetail.textContent = '';
