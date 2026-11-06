@@ -99,6 +99,13 @@ class RuntimeStatusStore:
             self._data["boiler"] = dict(boiler_state)
             self._touch()
 
+    def set_tapo_voltage(self, voltage: float | None) -> None:
+        with self._lock:
+            summary = self._data.setdefault("power_summary", {})
+            summary["tapoVoltage"] = voltage
+            summary["tapoVoltageTs"] = utc_now_iso()
+            self._touch()
+
     def set_connection_meta(self, key: str, value: Any) -> None:
         with self._lock:
             connection = self._data.setdefault("connection", {})

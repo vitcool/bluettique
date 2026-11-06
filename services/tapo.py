@@ -87,3 +87,48 @@ class TapoService:
             return float(raw_power)
         except (TypeError, ValueError):
             return None
+
+    async def get_current_voltage(self):
+        """Return the live socket voltage in volts when supported by the plug."""
+        get_meter_data = getattr(self.device, "get_energy_meter_data", None)
+        if get_meter_data is None:
+            return None
+
+        meter_data = await get_meter_data()
+        if meter_data is None:
+            return None
+        if isinstance(meter_data, dict):
+            values = meter_data
+        elif hasattr(meter_data, "to_dict"):
+            values = meter_data.to_dict()
+        else:
+            values = {}
+
+        voltage = None
+        for key in ("voltage", "voltage_v", "voltage_mv"):
+            if key in values:
+                voltage = values[key]
+                if key == "voltage_mv":
+                    try:
+                        voltage = float(voltage) / 1000
+                    except (TypeError, ValueError):
+                        return None
+                break
+        if voltage is None:
+            for key in ("voltage", "voltage_v", "voltage_mv"):
+                if hasattr(meter_data, key):
+                    voltage = getattr(meter_data, key)
+                    if key == "voltage_mv":
+                        try:
+                            voltage = float(voltage) / 1000
+                        except (TypeError, ValueError):
+                            return None
+                    break
+        try:
+            voltage = float(voltage)
+        except (TypeError, ValueError):
+            return None
+        # Some firmware/API versions expose the raw millivolt value as voltage.
+        if voltage > 1000:
+            voltage /= 1000
+        return voltage if 0 < voltage <= 1000 else None

@@ -1,6 +1,7 @@
 import logging
 from services.tapo import TapoService
 from models.tapo import TapoStatus
+from services.runtime_status import runtime_status_store
 
 
 class TapoController:
@@ -43,6 +44,12 @@ class TapoController:
         try:
             await self.tapo.initialize()
             power = await self.tapo.get_current_power()
+            try:
+                voltage = await self.tapo.get_current_voltage()
+            except Exception:
+                voltage = None
+                logging.debug("TAPO: Failed to read socket voltage", exc_info=True)
+            runtime_status_store.set_tapo_voltage(voltage)
             logging.info(f"TAPO: Current power usage: {power}W")
             return power
         except Exception:

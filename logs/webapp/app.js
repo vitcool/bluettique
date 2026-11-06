@@ -23,6 +23,7 @@ const powerOffBtn = document.getElementById('powerOffBtn');
 const powerOffMessage = document.getElementById('powerOffMessage');
 const inputStatus = document.getElementById('inputStatus');
 const inputDetail = document.getElementById('inputDetail');
+const tapoVoltageDetail = document.getElementById('tapoVoltageDetail');
 const connStatus = document.getElementById('connStatus');
 const connDetail = document.getElementById('connDetail');
 const acOutputDetail = document.getElementById('acOutputDetail');
@@ -364,6 +365,8 @@ function buildPowerSummary(data) {
         acOutputPowerTs: summary.acOutputPowerTs ?? data?.generated_at ?? null,
         dcOutputPower: summary.dcOutputPower ?? bluetti.dc_output_power ?? null,
         dcOutputPowerTs: summary.dcOutputPowerTs ?? data?.generated_at ?? null,
+        tapoVoltage: summary.tapoVoltage ?? null,
+        tapoVoltageTs: summary.tapoVoltageTs ?? null,
         lastMessageTs: summary.lastMessageTs ?? data?.connection?.last_message_ts ?? null,
         forcedOfflineTs: summary.forcedOfflineTs ?? null,
         forcedAcOffTs: summary.forcedAcOffTs ?? null,
@@ -504,6 +507,15 @@ function renderPowerSummary(summary) {
     if (typeof dc === 'number' && !isNaN(dc)) parts.push(`DC ${Math.round(dc)} W`);
     if (typeof ac === 'number' && !isNaN(ac)) parts.push(`AC ${Math.round(ac)} W`);
     inputDetail.textContent = parts.length ? parts.join(' • ') : 'Waiting for data…';
+
+    const tapoVoltage = Number(summary.tapoVoltage);
+    if (summary.tapoVoltage !== null && summary.tapoVoltage !== undefined && Number.isFinite(tapoVoltage) && tapoVoltage > 0) {
+        tapoVoltageDetail.textContent = `Tapo socket: ${tapoVoltage.toFixed(1)} V`;
+    } else if (summary.tapoVoltageTs) {
+        tapoVoltageDetail.textContent = 'Tapo socket voltage unavailable';
+    } else {
+        tapoVoltageDetail.textContent = '';
+    }
 
     const lastMsg = summary.lastMessageTs;
     const forcedOfflineTs = summary.forcedOfflineTs;
