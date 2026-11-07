@@ -13,12 +13,14 @@ const boilerCard = document.getElementById('boilerCard');
 const boilerCardValue = document.getElementById('boilerCardValue');
 const boilerCardMeta = document.getElementById('boilerCardMeta');
 const boilerCardMeta2 = document.getElementById('boilerCardMeta2');
+const boilerEnabledToggle = document.getElementById('boilerEnabledToggle');
 const acStatus = document.getElementById('acStatus');
 const batteryPercentEl = document.getElementById('batteryPercent');
 const batteryTime = document.getElementById('batteryTime');
 const batteryDrainTime = document.getElementById('batteryDrainTime');
 const batteryExtra = document.getElementById('batteryExtra');
 const powerOffAfterChargeToggle = document.getElementById('powerOffAfterChargeToggle');
+const bluettiMonitoringToggle = document.getElementById('bluettiMonitoringToggle');
 const powerOffBtn = document.getElementById('powerOffBtn');
 const powerOffMessage = document.getElementById('powerOffMessage');
 const inputStatus = document.getElementById('inputStatus');
@@ -626,19 +628,46 @@ function renderChargingState(chargingState) {
 }
 
 function renderBoilerEnabled(enabled) {
-    boilerCard.classList.toggle('hidden', !enabled);
+    boilerCard.classList.remove('hidden');
     boilerLogBtn.classList.toggle('hidden', !enabled);
     if (!enabled && currentView === 'boiler-log') {
         setView('charging-log');
+    }
+    if (!enabled) {
+        boilerCardValue.textContent = 'Disabled';
+        boilerCardValue.className = 'value off';
+        boilerCardMeta.textContent = 'Schedule paused. Enable it to resume.';
+        boilerCardMeta2.textContent = '';
+        boilerCard.className = 'status-card boiler-card';
+    }
+}
+
+function renderBluettiControlsEnabled(enabled) {
+    const chargePowerOffToggle = powerOffAfterChargeToggle.closest('.card-toggle');
+    if (chargePowerOffToggle) {
+        chargePowerOffToggle.classList.toggle('hidden', !enabled);
+    }
+    powerOffAfterChargeToggle.disabled = !enabled;
+    if (!enabled) {
+        powerOffBtn.classList.add('hidden');
+        powerOffMessage.classList.add('hidden');
     }
 }
 
 function renderSettings(settings) {
     // Don't clobber the checkbox while a save is in flight.
-    if (!settings || powerOffAfterChargeToggle.disabled) {
+    if (!settings) {
         return;
     }
-    powerOffAfterChargeToggle.checked = Boolean(settings.power_off_after_charge);
+    if (!powerOffAfterChargeToggle.disabled) {
+        powerOffAfterChargeToggle.checked = Boolean(settings.power_off_after_charge);
+    }
+    if (!bluettiMonitoringToggle.disabled) {
+        bluettiMonitoringToggle.checked = Boolean(settings.bluetti_monitoring_enabled);
+    }
+    if (!boilerEnabledToggle.disabled) {
+        boilerEnabledToggle.checked = Boolean(settings.boiler_enabled);
+    }
 }
 
 powerOffAfterChargeToggle.addEventListener('change', async () => {
@@ -660,6 +689,54 @@ powerOffAfterChargeToggle.addEventListener('change', async () => {
         powerOffAfterChargeToggle.checked = !wanted;
     } finally {
         powerOffAfterChargeToggle.disabled = false;
+    }
+});
+
+bluettiMonitoringToggle.addEventListener('change', async () => {
+    const wanted = bluettiMonitoringToggle.checked;
+    bluettiMonitoringToggle.disabled = true;
+    try {
+        const response = await fetch('/api/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bluetti_monitoring_enabled: wanted }),
+        });
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        const data = await response.json();
+        bluettiMonitoringToggle.checked = Boolean(data?.settings?.bluetti_monitoring_enabled);
+        renderBluettiControlsEnabled(bluettiMonitoringToggle.checked);
+    } catch (error) {
+        console.error('Error saving Bluetti monitoring setting:', error);
+        bluettiMonitoringToggle.checked = !wanted;
+        renderBluettiControlsEnabled(bluettiMonitoringToggle.checked);
+    } finally {
+        bluettiMonitoringToggle.disabled = false;
+    }
+});
+
+boilerEnabledToggle.addEventListener('change', async () => {
+    const wanted = boilerEnabledToggle.checked;
+    boilerEnabledToggle.disabled = true;
+    try {
+        const response = await fetch('/api/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ boiler_enabled: wanted }),
+        });
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        const data = await response.json();
+        boilerEnabledToggle.checked = Boolean(data?.settings?.boiler_enabled);
+        renderBoilerEnabled(boilerEnabledToggle.checked);
+    } catch (error) {
+        console.error('Error saving boiler scheduler setting:', error);
+        boilerEnabledToggle.checked = !wanted;
+        renderBoilerEnabled(boilerEnabledToggle.checked);
+    } finally {
+        boilerEnabledToggle.disabled = false;
     }
 });
 
@@ -693,6 +770,7 @@ async function fetchStatus() {
         applyRefreshConfig(data?.connection || {});
 
         renderPowerSummary(buildPowerSummary(data));
+        renderBluettiControlsEnabled(data?.bluetti_monitoring_enabled !== false);
         const boilerEnabled = data?.boiler_enabled !== false;
         renderBoilerEnabled(boilerEnabled);
         if (boilerEnabled) {

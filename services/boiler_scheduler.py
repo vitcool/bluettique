@@ -213,6 +213,23 @@ class BoilerScheduler:
             else:
                 self.logger.warning("Boiler: Failed to turn off socket", exc_info=True)
 
+    async def disable(self):
+        """Pause the scheduler, account for active runtime, and turn its socket off."""
+        now = self.clock.now()
+        now_mono = self.clock.monotonic()
+        if self.state == BoilerState.RUNNING:
+            elapsed = max(now_mono - self.last_update_monotonic, 0)
+            self.remaining_sec = max(self.remaining_sec - elapsed, 0)
+        if self.remaining_sec <= 0:
+            self.state = BoilerState.COMPLETED
+            self.completed_today = True
+        elif not self.completed_today:
+            self.state = BoilerState.PAUSED
+        self.last_update_monotonic = now_mono
+        await self._ensure_off()
+        self._persist_state(now)
+        self.logger.info("Boiler: Scheduler disabled; socket is off, remaining %.0fs", self.remaining_sec)
+
     async def _is_online(self) -> bool:
         try:
             await self.tapo.initialize()

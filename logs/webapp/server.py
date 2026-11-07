@@ -417,7 +417,8 @@ def build_status_payload() -> Dict[str, Any]:
         generated_at = datetime.now(timezone.utc).isoformat()
     status_payload["generated_at"] = generated_at
     status_payload["settings"] = user_settings.snapshot()
-    status_payload["boiler_enabled"] = bool_env("BOILER_ENABLED", False)
+    status_payload["bluetti_monitoring_enabled"] = user_settings.bluetti_monitoring_enabled
+    status_payload["boiler_enabled"] = user_settings.boiler_enabled
     status_payload["battery_capacity_wh"] = int_env("BATTERY_CAPACITY_WH", 2048, min_value=1)
     status_payload["battery_pack2_capacity_wh"] = int_env("BATTERY_PACK2_CAPACITY_WH", 0, min_value=0)
     status_payload["battery_pack3_capacity_wh"] = int_env("BATTERY_PACK3_CAPACITY_WH", 0, min_value=0)
@@ -546,26 +547,47 @@ def api_status():
 @app.post("/api/settings")
 def api_update_settings():
     body = request.get_json(silent=True)
-    value = body.get("power_off_after_charge") if isinstance(body, dict) else None
-    if not isinstance(value, bool):
+    if not isinstance(body, dict):
         return (
             jsonify(
                 {
                     "ok": False,
                     "error": {
                         "code": "invalid_settings",
-                        "message": "Expected JSON body {\"power_off_after_charge\": true|false}.",
+                        "message": "Expected a JSON object containing a supported boolean setting.",
                     },
                 }
             ),
             400,
         )
-    user_settings.set_power_off_after_charge(value)
+    supported = {
+        "power_off_after_charge": user_settings.set_power_off_after_charge,
+        "bluetti_monitoring_enabled": user_settings.set_bluetti_monitoring_enabled,
+        "boiler_enabled": user_settings.set_boiler_enabled,
+    }
+    updates = {key: value for key, value in body.items() if key in supported}
+    if not updates or any(type(value) is not bool for value in updates.values()):
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": {
+                        "code": "invalid_settings",
+                        "message": "Settings values must be booleans and use supported setting names.",
+                    },
+                }
+            ),
+            400,
+        )
+    for key, value in updates.items():
+        supported[key](value)
     return jsonify({"ok": True, "settings": user_settings.snapshot()})
 
 
 @app.post("/api/power-off")
 def api_power_off():
+    if not user_settings.bluetti_monitoring_enabled:
+        return jsonify({"ok": False, "error": {"code": "power_off_unavailable", "message": "Bluetti monitoring is disabled."}}), 503
     if _power_off_scheduler is None:
         return jsonify({"ok": False, "error": {"code": "power_off_unavailable", "message": "Power control is unavailable."}}), 503
 

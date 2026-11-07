@@ -11,6 +11,7 @@ from charging_state_handler import ChargingStateHandler
 from services.boiler_scheduler import BoilerScheduler, BoilerConfig
 from services.tapo import TapoService
 from services.runtime_status import runtime_status_store
+from services.user_settings import user_settings
 from logs.webapp.server import run_web_server
 
 
@@ -38,16 +39,23 @@ async def main(tapo_controller, bluetti_controller):
     setup_logging()
     _start_web_server(bluetti_controller)
 
-    boiler_task = None
+    boiler_task = asyncio.create_task(
+        manage_boiler_scheduler(BoilerConfig.from_env()),
+        name="boiler-scheduler-manager",
+    )
     bluetti_watchdog_task = asyncio.create_task(
-        bluetti_controller.monitor_connection(), name="bluetti-connection-watchdog"
+        bluetti_controller.monitor_connection(
+            lambda: user_settings.bluetti_monitoring_enabled
+        ),
+        name="bluetti-connection-watchdog",
     )
 
     def handle_stop_signal(signum, frame):
         logging.info("Stop signal received, performing cleanup...")
         if boiler_task:
             boiler_task.cancel()
-        bluetti_watchdog_task.cancel()
+        if bluetti_watchdog_task:
+            bluetti_watchdog_task.cancel()
         bluetti_controller.stop()
         logging.info("Cleanup complete, exiting.")
         exit(0)
@@ -63,24 +71,50 @@ async def main(tapo_controller, bluetti_controller):
         logging.info("Starting Bluetti DC cycle test...")
         await test_bluetti_dc_cycle(bluetti_controller)
 
-    # Optional boiler scheduler (runs concurrently with charging logic)
-    boiler_config = BoilerConfig.from_env()
-    if boiler_config.enabled:
-        boiler_tapo = TapoService(
-            username=boiler_config.username,
-            password=boiler_config.password,
-            ip_address=boiler_config.ip_address,
-        )
-        boiler_scheduler = BoilerScheduler(boiler_tapo, config=boiler_config)
-        boiler_task = asyncio.create_task(boiler_scheduler.run())
-        logging.info("Boiler scheduler started in background.")
-    else:
-        logging.info("Boiler scheduler disabled.")
-
     # Main charging state machine
     charging_handler = ChargingStateHandler(tapo_controller, bluetti_controller)
     while True:
         await charging_handler.handle_state()
+
+
+async def manage_boiler_scheduler(config: BoilerConfig):
+    """Start and stop the boiler scheduler when its persisted dashboard toggle changes."""
+    scheduler = None
+    scheduler_task = None
+    previously_enabled = False
+    try:
+        while True:
+            enabled = user_settings.boiler_enabled
+            if enabled and (scheduler_task is None or scheduler_task.done()):
+                if scheduler is None:
+                    boiler_tapo = TapoService(
+                        username=config.username,
+                        password=config.password,
+                        ip_address=config.ip_address,
+                    )
+                    scheduler = BoilerScheduler(boiler_tapo, config=config)
+                config.enabled = True
+                scheduler_task = asyncio.create_task(
+                    scheduler.run(), name="boiler-scheduler"
+                )
+                logging.info("Boiler scheduler started from dashboard setting.")
+            elif not enabled and previously_enabled:
+                if scheduler_task is not None and not scheduler_task.done():
+                    scheduler_task.cancel()
+                    await asyncio.gather(scheduler_task, return_exceptions=True)
+                scheduler_task = None
+                config.enabled = False
+                if scheduler is not None:
+                    await scheduler.disable()
+                logging.info("Boiler scheduler stopped from dashboard setting.")
+            previously_enabled = enabled
+            await asyncio.sleep(1)
+    finally:
+        if scheduler_task is not None and not scheduler_task.done():
+            scheduler_task.cancel()
+            await asyncio.gather(scheduler_task, return_exceptions=True)
+        if scheduler is not None:
+            await scheduler.disable()
 
 
 def _start_web_server(bluetti_controller):

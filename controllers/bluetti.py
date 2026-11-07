@@ -5,6 +5,7 @@ import os
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Callable
 from services.bluettiMqtt import BluettiMQTTService
 from utils.env import int_env
 
@@ -157,10 +158,22 @@ class BluettiController:
         self._save_connection_blocked(True)
         return False
 
-    async def monitor_connection(self):
+    async def monitor_connection(self, monitoring_enabled: Callable[[], bool] | None = None):
         """Retry unavailable Bluetti connections and recover links that later drop."""
+        monitoring_enabled = monitoring_enabled or (lambda: True)
+        previously_enabled = monitoring_enabled()
         while True:
             await asyncio.sleep(self.watchdog_interval_sec)
+            enabled = monitoring_enabled()
+            if not enabled:
+                if self.connection_set or self._watchdog_enabled:
+                    self.stop()
+                previously_enabled = False
+                continue
+            if not previously_enabled:
+                await self.initialize(force=True)
+                previously_enabled = True
+                continue
             if self._connection_blocked:
                 if time.time() >= self._connection_retry_after:
                     await self.initialize()

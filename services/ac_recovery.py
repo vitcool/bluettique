@@ -15,11 +15,13 @@ class AcRecoveryTask:
         bluetti_controller,
         retries_wanted: Callable[[], bool],
         zero_power_off_callback: Optional[Callable[[], Awaitable[None]]] = None,
+        monitoring_enabled: Optional[Callable[[], bool]] = None,
     ):
         self.config = config
         self.bluetti_controller = bluetti_controller
         self.retries_wanted = retries_wanted
         self.zero_power_off_callback = zero_power_off_callback
+        self.monitoring_enabled = monitoring_enabled or (lambda: True)
         self.task: Optional[asyncio.Task] = None
         self._reset_counters()
 
@@ -63,6 +65,9 @@ class AcRecoveryTask:
             )
             while True:
                 await asyncio.sleep(poll_interval)
+                if not self.monitoring_enabled():
+                    logging.info("Charging: Bluetti monitoring disabled; stopping AC recovery watcher")
+                    return
                 status = self.bluetti_controller.get_status()
                 if self.has_input_power(status):
                     self._handle_input_power(status)
@@ -93,8 +98,10 @@ class AcRecoveryTask:
             )
             try:
                 connected = await self.bluetti_controller.initialize(force=True)
-                if connected:
+                if connected and self.monitoring_enabled():
                     self.bluetti_controller.turn_ac("ON")
+                elif connected:
+                    logging.info("Charging: Bluetti monitoring disabled during reconnect; leaving AC unchanged")
                 else:
                     logging.info("Charging: Bluetti still unavailable; will retry AC recovery")
             except Exception:
@@ -156,7 +163,7 @@ class AcRecoveryTask:
                 self.zero_duration,
             )
             self.bluetti_controller.turn_ac("OFF")
-            if self.zero_power_off_callback is not None:
+            if self.monitoring_enabled() and self.zero_power_off_callback is not None:
                 await self.zero_power_off_callback()
             self.retry_suppressed_for_cycle = True
             self.retry_suppressed_logged = False

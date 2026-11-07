@@ -9,7 +9,21 @@ from typing import Any, Dict
 
 DEFAULTS: Dict[str, Any] = {
     "power_off_after_charge": False,
+    "bluetti_monitoring_enabled": None,
+    "boiler_enabled": None,
 }
+
+
+def _env_bluetti_monitoring_enabled() -> bool:
+    return os.getenv("BLUETTI_MONITORING_ENABLED", "true").strip().lower() in {
+        "1", "true", "yes", "y", "on"
+    }
+
+
+def _env_boiler_enabled() -> bool:
+    return os.getenv("BOILER_ENABLED", "false").strip().lower() in {
+        "1", "true", "yes", "y", "on"
+    }
 
 
 class UserSettings:
@@ -38,8 +52,11 @@ class UserSettings:
             return
         if isinstance(raw, dict):
             for key, default in DEFAULTS.items():
-                if isinstance(raw.get(key), type(default)):
-                    self._data[key] = raw[key]
+                value = raw.get(key)
+                if (default is None and type(value) is bool) or (
+                    default is not None and isinstance(value, type(default))
+                ):
+                    self._data[key] = value
 
     def _save(self) -> None:
         try:
@@ -50,7 +67,34 @@ class UserSettings:
 
     def snapshot(self) -> Dict[str, Any]:
         with self._lock:
-            return dict(self._data)
+            result = dict(self._data)
+            if result["bluetti_monitoring_enabled"] is None:
+                result["bluetti_monitoring_enabled"] = _env_bluetti_monitoring_enabled()
+            if result["boiler_enabled"] is None:
+                result["boiler_enabled"] = _env_boiler_enabled()
+            return result
+
+    @property
+    def bluetti_monitoring_enabled(self) -> bool:
+        with self._lock:
+            value = self._data["bluetti_monitoring_enabled"]
+            return _env_bluetti_monitoring_enabled() if value is None else bool(value)
+
+    def set_bluetti_monitoring_enabled(self, value: bool) -> None:
+        with self._lock:
+            self._data["bluetti_monitoring_enabled"] = bool(value)
+            self._save()
+
+    @property
+    def boiler_enabled(self) -> bool:
+        with self._lock:
+            value = self._data["boiler_enabled"]
+            return _env_boiler_enabled() if value is None else bool(value)
+
+    def set_boiler_enabled(self, value: bool) -> None:
+        with self._lock:
+            self._data["boiler_enabled"] = bool(value)
+            self._save()
 
     @property
     def power_off_after_charge(self) -> bool:

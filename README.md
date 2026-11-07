@@ -96,7 +96,7 @@ RUN_DC_TEST=false  # optional one-shot DC on/off cycle at startup
 
 ENV='dev' # 'prod'
 
-# Boiler nightly scheduler (independent from charging loop)
+# Boiler nightly scheduler (independent from charging loop; runtime toggle in the dashboard)
 BOILER_ENABLED=false
 BOILER_TAPO_EMAIL=
 BOILER_TAPO_PASSWORD=
@@ -120,6 +120,8 @@ BLUETTI_UNAVAILABLE_RETRY_SEC=300
 BLUETTI_CONNECTION_STATE_FILE=logs/bluetti_connection_state.json
 # Dashboard toggles (e.g. "Power off after charging") persist here
 SETTINGS_FILE=logs/settings.json
+# Initial default; the persisted dashboard checkbox can change this at runtime
+BLUETTI_MONITORING_ENABLED=true
 ```
 
 Make sure to replace the placeholders with your actual credentials and settings.
@@ -138,17 +140,17 @@ Make sure to replace the placeholders with your actual credentials and settings.
 
 ### Boiler nightly scheduler
 
-- When `BOILER_ENABLED=true`, a separate async scheduler runs alongside charging. It targets a dedicated TAPO socket (credentials/IP above) and guarantees the socket is ON for `BOILER_TOTAL_RUN_SEC` seconds within the daily window (`BOILER_WINDOW_START`–`BOILER_WINDOW_END`, default 00:00–06:00).
+- The dashboard's **Boiler scheduler enabled** checkbox starts or pauses the separate async scheduler immediately; its choice is persisted in `SETTINGS_FILE` and takes precedence over the initial `BOILER_ENABLED` environment default. Pausing the scheduler accounts for any active runtime and turns its socket off. The scheduler targets a dedicated TAPO socket and guarantees the socket is ON for `BOILER_TOTAL_RUN_SEC` seconds within the daily window (`BOILER_WINDOW_START`–`BOILER_WINDOW_END`, default 00:00–06:00).
 - If power is unavailable at window start, it polls every `BOILER_POLL_SEC` seconds until the socket comes online, then starts. If power drops mid-run, the countdown pauses and resumes when power returns (only the remaining seconds are run).
 - An optional `BOILER_ACTIVE_W_THRESHOLD` lets you count runtime only while power draw meets/exceeds the threshold (0 means count whenever the socket is ON).
 - Progress persists per night to `BOILER_STATE_FILE`; if the process restarts during the same window, it resumes the remaining seconds. Logs are written to `BOILER_LOG_FILE`.
 
 ## Charging flow behavior
 
-- The app polls the configured Tapo P110 (`CHARGING_SOCKET_DEVICE_ID` or `TAPO_IP_ADDRESS`). Charging starts on the first launch if the plug is online, or when the plug comes back online after a confirmed outage (a power cut) — but never while the Bluetti battery guard blocks it.
+- The app polls the configured Tapo P110 (`CHARGING_SOCKET_DEVICE_ID` or `TAPO_IP_ADDRESS`). With Bluetti monitoring enabled (default), charging starts on the first launch if the plug is online, or when the plug comes back online after a confirmed outage — but never while the Bluetti battery guard blocks it. Use the dashboard's **Bluetti Bluetooth monitoring** checkbox, or set its initial default with `BLUETTI_MONITORING_ENABLED`, for stations without Bluetooth such as the EB55. In that mode, charging starts and stops using Tapo power readings alone; the dashboard choice is persisted in `SETTINGS_FILE` and takes precedence over the environment default.
 - A charging supervisor monitors instantaneous power to decide whether charging is active (`power >= CHARGING_W_THRESHOLD`). Once `STABLE_POWER_CHECKS` consecutive readings are below the threshold, the socket is turned off.
-- Charging never starts when the Bluetti battery is at or above `CHARGE_SKIP_ABOVE_PERCENT` (the socket is forced off instead). With `CHARGE_SKIP_WHEN_UNKNOWN=true` an unknown level, or one older than `BATTERY_MAX_AGE_SEC`, also blocks the start; after a restart it waits up to `BATTERY_UNKNOWN_WAIT_SEC` for a fresh reading first. A plug is treated as disconnected after `OFFLINE_CONFIRM_FAILURES` consecutive failed polls or `OFFLINE_CONFIRM_SEC` offline; failed power reads while charging are retried for `MONITOR_READ_FAILURES` / `MONITOR_READ_FAIL_SEC` before falling back to WAIT_POWER.
-- If Bluetti is unavailable after a connection sequence, the app stays running and pauses further attempts for `BLUETTI_UNAVAILABLE_RETRY_SEC` (default 300 seconds). The retry deadline is saved in `BLUETTI_CONNECTION_STATE_FILE` (default `logs/bluetti_connection_state.json`), which is persisted by the Docker `logs` volume, so container restarts do not trigger an immediate retry loop. The watchdog retries when the saved deadline passes; a successful connection clears the file. After `BLUETTI_CONNECTION_RETRY_ATTEMPTS` failed controller attempts (default 2), the app power-cycles the host's default Bluetooth adapter once and retries pairing. Each pairing wait uses `BLUETTI_BROKER_CONNECTION_TIMEOUT` (10 seconds minimum, 30-second default). Power-cycling the adapter briefly disconnects other Bluetooth devices using it.
+- With Bluetti monitoring enabled, charging never starts when the Bluetti battery is at or above `CHARGE_SKIP_ABOVE_PERCENT` (the socket is forced off instead). With `CHARGE_SKIP_WHEN_UNKNOWN=true` an unknown level, or one older than `BATTERY_MAX_AGE_SEC`, also blocks the start; after a restart it waits up to `BATTERY_UNKNOWN_WAIT_SEC` for a fresh reading first. With monitoring disabled these battery checks, AC recovery, and Bluetti power-off controls are disabled. In either mode a plug is treated as disconnected after `OFFLINE_CONFIRM_FAILURES` consecutive failed polls or `OFFLINE_CONFIRM_SEC` offline; failed power reads while charging are retried for `MONITOR_READ_FAILURES` / `MONITOR_READ_FAIL_SEC` before falling back to WAIT_POWER.
+- If Bluetti is unavailable after a connection sequence, the app stays running and pauses further attempts for `BLUETTI_UNAVAILABLE_RETRY_SEC` (default 300 seconds). The retry deadline is saved in `BLUETTI_CONNECTION_STATE_FILE` (default `logs/bluetti_connection_state.json`), which is persisted by the Docker `logs` volume, so container restarts do not trigger an immediate retry loop. The watchdog retries when the saved deadline passes; a successful connection clears the file. After `BLUETTI_CONNECTION_RETRY_ATTEMPTS` failed controller attempts (default 1), the app power-cycles the host's default Bluetooth adapter once and retries pairing. Each pairing wait uses `BLUETTI_BROKER_CONNECTION_TIMEOUT` (10-second default). Power-cycling the adapter briefly disconnects other Bluetooth devices using it.
 - After a Bluetti connection succeeds, a watchdog checks the broker process and telemetry every `BLUETTI_WATCHDOG_INTERVAL_SEC` (default 15 seconds). If the broker exits or battery telemetry goes stale beyond `CONNECTION_WINDOW_MIN`, it resets the stale MQTT/BLE connection and reconnects. If recovery fails, it saves a new retry deadline and keeps the app running.
 - Periodic checks are spaced by `CHECK_INTERVAL_SEC`. Stable power confirmation uses `STABLE_POWER_*`.
 - The dashboard estimates the finish time from the latest AC/DC input power and the drain time from the latest AC/DC output power. Both use `BATTERY_CAPACITY_WH` (default: 2048 Wh for AC200M). When a reported expansion pack has a nonzero `BATTERY_PACK2_CAPACITY_WH` or `BATTERY_PACK3_CAPACITY_WH`, its remaining energy is included. Configure each pack as 2048 Wh for a B230 or 3072 Wh for a B300. These estimates do not account for conversion losses or standby consumption.
