@@ -256,6 +256,7 @@ class ChargingStateHandler:
             self.config,
             bluetti_controller,
             lambda: isinstance(self.state, WaitPowerState) and self.offline_seen_in_wait,
+            self.power_off_after_lack_consumption,
         )
         runtime_status_store.set_charging_state(self._state_name(self.state))
 
@@ -372,3 +373,17 @@ class ChargingStateHandler:
 
     def schedule_offline_recovery_check(self):
         self.ac_recovery.start()
+
+    async def power_off_after_lack_consumption(self):
+        if not user_settings.power_off_after_charge:
+            return
+        try:
+            logging.info("Charging: No AC consumption; powering Bluetti off (dashboard setting)")
+            confirmed = await self.bluetti_controller.power_off_until_confirmed(
+                self.config.power_off_max_attempts,
+                self.config.power_off_quiet_sec,
+            )
+            if not confirmed:
+                logging.warning("Charging: Bluetti power off not confirmed; giving up")
+        except Exception:
+            logging.warning("Charging: Failed to power Bluetti off after lack of consumption", exc_info=True)

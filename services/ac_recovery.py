@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import time
-from typing import Callable, Optional
+from typing import Awaitable, Callable, Optional
 
 from services.charging_supervisor import ChargingConfig
 
@@ -9,10 +9,17 @@ from services.charging_supervisor import ChargingConfig
 class AcRecoveryTask:
     """Background watcher that keeps the Bluetti AC on during an outage and turns it off once it draws ~0W."""
 
-    def __init__(self, config: ChargingConfig, bluetti_controller, retries_wanted: Callable[[], bool]):
+    def __init__(
+        self,
+        config: ChargingConfig,
+        bluetti_controller,
+        retries_wanted: Callable[[], bool],
+        zero_power_off_callback: Optional[Callable[[], Awaitable[None]]] = None,
+    ):
         self.config = config
         self.bluetti_controller = bluetti_controller
         self.retries_wanted = retries_wanted
+        self.zero_power_off_callback = zero_power_off_callback
         self.task: Optional[asyncio.Task] = None
         self._reset_counters()
 
@@ -143,6 +150,8 @@ class AcRecoveryTask:
                 self.zero_duration,
             )
             self.bluetti_controller.turn_ac("OFF")
+            if self.zero_power_off_callback is not None:
+                await self.zero_power_off_callback()
             self.retry_suppressed_for_cycle = True
             self.retry_suppressed_logged = False
             self.retry_attempts = 0
