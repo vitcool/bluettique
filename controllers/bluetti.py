@@ -14,7 +14,7 @@ class BluettiController:
         self.connection_set = False
         self._watchdog_enabled = False
         self.connection_retry_attempts = int_env(
-            "BLUETTI_CONNECTION_RETRY_ATTEMPTS", 2, min_value=1
+            "BLUETTI_CONNECTION_RETRY_ATTEMPTS", 1, min_value=1
         )
         self.telemetry_stale_sec = int_env("CONNECTION_WINDOW_MIN", 5, min_value=1) * 60
         self.watchdog_interval_sec = int_env(

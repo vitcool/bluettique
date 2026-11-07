@@ -57,7 +57,10 @@ class AcRecoveryTask:
 
     async def _run(self):
         try:
-            poll_interval = self.config.stable_power_interval_sec
+            poll_interval = min(
+                self.config.stable_power_interval_sec,
+                max(float(self.config.ac_retry_interval_sec), 0.1),
+            )
             while True:
                 await asyncio.sleep(poll_interval)
                 status = self.bluetti_controller.get_status()
@@ -66,7 +69,7 @@ class AcRecoveryTask:
                 elif not status.get("ac_output_on"):
                     await self._handle_ac_off()
                 else:
-                    self._handle_ac_on(status.get("ac_output_power"), poll_interval)
+                    await self._handle_ac_on(status.get("ac_output_power"), poll_interval)
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -89,8 +92,11 @@ class AcRecoveryTask:
                 limit_display,
             )
             try:
-                await self.bluetti_controller.initialize()
-                self.bluetti_controller.turn_ac("ON")
+                connected = await self.bluetti_controller.initialize(force=True)
+                if connected:
+                    self.bluetti_controller.turn_ac("ON")
+                else:
+                    logging.info("Charging: Bluetti still unavailable; will retry AC recovery")
             except Exception:
                 logging.warning("Charging: AC ON retry failed", exc_info=True)
 
@@ -123,7 +129,7 @@ class AcRecoveryTask:
             )
             self.bluetti_controller.turn_ac("OFF")
 
-    def _handle_ac_on(self, ac_power, poll_interval):
+    async def _handle_ac_on(self, ac_power, poll_interval):
         if self.retry_attempts:
             logging.info(
                 "Charging: AC output confirmed ON after %s retries",

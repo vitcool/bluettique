@@ -18,11 +18,11 @@ class BluettiMQTTService:
         self.device_name = os.getenv("BLUETTI_DEVICE_NAME")
         self.broker_interval = os.getenv("BLUETTI_BROKER_INTERVAL", "30")
         self.broker_connection_timeout = int_env(
-            "BLUETTI_BROKER_CONNECTION_TIMEOUT", 30, min_value=10
+            "BLUETTI_BROKER_CONNECTION_TIMEOUT", 10, min_value=10
         )
         # Retries for pairing the first time; keeps runs resilient to flaky BT.
-        self.connect_retries = int_env("BLUETTI_BROKER_RETRIES", 3, min_value=1)
-        self.connect_retry_delay = int_env("BLUETTI_BROKER_RETRY_DELAY", 5, min_value=1)
+        self.connect_retries = int_env("BLUETTI_BROKER_RETRIES", 1, min_value=1)
+        self.connect_retry_delay = int_env("BLUETTI_BROKER_RETRY_DELAY", 1, min_value=1)
         self.broker_adapter = os.getenv("BLUETTI_BROKER_ADAPTER")
         self.client = mqtt.Client()
 
