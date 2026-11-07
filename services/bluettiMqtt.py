@@ -1,11 +1,14 @@
 import asyncio
+import json
 import os
 import subprocess
 import logging
 import shutil
 import threading
 from models.bluetti import BluettiStatus
+from utils.env import int_env
 import paho.mqtt.client as mqtt
+from services.runtime_status import runtime_status_store
 
 
 class BluettiMQTTService:
@@ -14,12 +17,12 @@ class BluettiMQTTService:
         self.mac_address = os.getenv("BLUETTI_MAC_ADDRESS")
         self.device_name = os.getenv("BLUETTI_DEVICE_NAME")
         self.broker_interval = os.getenv("BLUETTI_BROKER_INTERVAL", "30")
-        self.broker_connection_timeout = max(
-            int(os.getenv("BLUETTI_BROKER_CONNECTION_TIMEOUT", "90")), 90
+        self.broker_connection_timeout = int_env(
+            "BLUETTI_BROKER_CONNECTION_TIMEOUT", 30, min_value=10
         )
         # Retries for pairing the first time; keeps runs resilient to flaky BT.
-        self.connect_retries = max(int(os.getenv("BLUETTI_BROKER_RETRIES", "3")), 1)
-        self.connect_retry_delay = max(int(os.getenv("BLUETTI_BROKER_RETRY_DELAY", "5")), 1)
+        self.connect_retries = int_env("BLUETTI_BROKER_RETRIES", 3, min_value=1)
+        self.connect_retry_delay = int_env("BLUETTI_BROKER_RETRY_DELAY", 5, min_value=1)
         self.broker_adapter = os.getenv("BLUETTI_BROKER_ADAPTER")
         self.client = mqtt.Client()
 
@@ -77,6 +80,53 @@ class BluettiMQTTService:
         )
         return False
 
+    async def reset_bluetooth_adapter(self) -> bool:
+        """Disconnect Bluetti and power-cycle the host's default BlueZ adapter."""
+        self.reset_connection()
+
+        if not shutil.which("bluetoothctl"):
+            logging.error("Cannot reset Bluetooth adapter: bluetoothctl is unavailable.")
+            return False
+
+        async def run_bluetoothctl(*args: str) -> bool:
+            try:
+                process = await asyncio.create_subprocess_exec(
+                    "bluetoothctl",
+                    *args,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=10)
+            except (OSError, asyncio.TimeoutError) as exc:
+                logging.warning("bluetoothctl %s failed: %s", " ".join(args), exc)
+                return False
+
+            output = (stdout or stderr).decode(errors="replace").strip()
+            if process.returncode != 0:
+                logging.warning(
+                    "bluetoothctl %s returned %s: %s",
+                    " ".join(args),
+                    process.returncode,
+                    output,
+                )
+                return False
+            logging.info("bluetoothctl %s: %s", " ".join(args), output or "OK")
+            return True
+
+        logging.warning("Resetting the host Bluetooth adapter after Bluetti pairing failures.")
+        powered_off = await run_bluetoothctl("power", "off")
+        await asyncio.sleep(2)
+        powered_on = await run_bluetoothctl("power", "on")
+        await asyncio.sleep(3)
+        return powered_off and powered_on
+
+    def reset_connection(self) -> None:
+        """Stop the MQTT bridge and drop the current BLE link before reconnecting."""
+        self.stop_client()
+        self.stop_broker()
+        self.device_connected = False
+        self.disconnect_device()
+
     async def _wait_for_pairing(self):
         while not self.device_connected:
             await asyncio.sleep(0.1)
@@ -116,11 +166,53 @@ class BluettiMQTTService:
             "dc_input_power": ("dc_input_power", float),
         }
 
+        for key in ("pack_details2", "pack_details3"):
+            if key in topic:
+                pack = self._extract_pack_details(payload)
+                self.status.update_status(f"{key}_percent", pack["percent"])
+                self.status.update_status(f"{key}_voltage", pack["voltage"])
+                self._publish_runtime_status()
+                return
+
         for key, (attr, transform) in topic_map.items():
             if key in topic:
                 value = transform(payload)
                 self.status.update_status(attr, value)
+                self._publish_runtime_status()
                 break
+
+    def _publish_runtime_status(self):
+        try:
+            runtime_status_store.update_bluetti(self.status.get_status())
+        except Exception:
+            logging.debug("Runtime status update failed", exc_info=True)
+
+    @staticmethod
+    def _extract_pack_details(payload: str) -> dict[str, float | None]:
+        """Extract additional battery pack details from JSON or plain numeric payload."""
+        try:
+            parsed = json.loads(payload)
+        except Exception:
+            parsed = payload
+
+        if isinstance(parsed, dict):
+            percent = parsed.get("percent")
+            voltage = parsed.get("voltage")
+        else:
+            percent = parsed
+            voltage = None
+
+        try:
+            percent_value = float(percent) if percent is not None else None
+        except (TypeError, ValueError):
+            percent_value = None
+
+        try:
+            voltage_value = float(voltage) if voltage is not None else None
+        except (TypeError, ValueError):
+            voltage_value = None
+
+        return {"percent": percent_value, "voltage": voltage_value}
 
     def start_client(self):
         self.client.loop_start()
@@ -200,6 +292,11 @@ class BluettiMQTTService:
         else:
             logging.debug("No broker process found to stop.")
 
+    def is_broker_running(self) -> bool:
+        """Return whether the managed bluetti-mqtt subprocess is still alive."""
+        process = getattr(self, "broker_process", None)
+        return process is not None and process.poll() is None
+
     def disconnect_device(self):
         """Ask BlueZ to drop the BLE connection so the adapter is freed."""
         if not self.mac_address:
@@ -243,7 +340,6 @@ class BluettiMQTTService:
             if not topic:
                 return
             self.client.publish(topic, state)
-            self.ac_output_on = state == "ON"
         else:
             logging.debug("Invalid state for AC output")
 

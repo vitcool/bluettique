@@ -1,6 +1,7 @@
 import logging
 from services.tapo import TapoService
 from models.tapo import TapoStatus
+from services.runtime_status import runtime_status_store
 
 
 class TapoController:
@@ -25,8 +26,7 @@ class TapoController:
         except Exception:
             self.status.reset()
             # Force a fresh login next time after auth/network failures
-            self.tapo.initialized = False
-            self.tapo.device = None
+            self.tapo.reset_session()
             logging.debug("TAPO: Failed to get status")
 
     async def start_charging(self):
@@ -44,11 +44,16 @@ class TapoController:
         try:
             await self.tapo.initialize()
             power = await self.tapo.get_current_power()
+            try:
+                voltage = await self.tapo.get_current_voltage()
+            except Exception:
+                voltage = None
+                logging.debug("TAPO: Failed to read socket voltage", exc_info=True)
+            runtime_status_store.set_tapo_voltage(voltage)
             logging.info(f"TAPO: Current power usage: {power}W")
             return power
         except Exception:
             # Reset session so we re-login after a 403/offline event
-            self.tapo.initialized = False
-            self.tapo.device = None
+            self.tapo.reset_session()
             logging.debug("TAPO: Failed to get current power")
             raise
